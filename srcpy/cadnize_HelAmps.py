@@ -1,5 +1,6 @@
 #file from argument:
 import sys
+import re
 if len(sys.argv) > 1:
     fileName = sys.argv[1]
 else:
@@ -14,7 +15,7 @@ changes = 0
 i=0
 for l in lines:
     if "double" in l:
-        l = l.replace("double", "fptype")
+        l = re.sub(r'\bdouble\b(?!_st)', 'fptype', l)
         changes += 1
         
         lines[i] = l

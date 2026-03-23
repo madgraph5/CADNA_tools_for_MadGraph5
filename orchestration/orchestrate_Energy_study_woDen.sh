@@ -29,8 +29,6 @@ set -euo pipefail
 #########################
 # Expand denominators with Double word expansions
 EXPAND_DENOM="true"
-DENOM_TYPE="double_st" #can be ither double, double_st, DW
-
 
 # Maximum number of parallel check_cpp.exe processes
 MAX_PARALLEL_CHECKS=120
@@ -344,7 +342,7 @@ step2_compile_all() {
         mkdir -p "$WORK_DIR/../src/Arithmetics"
         ln -sf "$CADNA_TOOLBOX_PATH/Arithmetics/"* "$WORK_DIR/../src/Arithmetics"
         log_info "Inside $(pwd)"
-        (cd "$WORK_DIR/../src/Arithmetics" && python3 HelAmpsDenomExpand.py ${DENOM_TYPE}) \
+        (cd "$WORK_DIR/../src/Arithmetics" && python3 HelAmpsDenomExpand.py) \
             || { log_error "HelAmpsDenomExpand.py failed"; exit 1; }
     fi
 
@@ -619,26 +617,13 @@ step5_histogram_mul_sub() {
         ln -sf "$CADNA_TOOLBOX_PATH/energy_histograms.py" "energy_histograms.py"
     fi
 
-    if [ ! -L "energy_histograms_cuts.py" ]; then
-        ln -sf "$CADNA_TOOLBOX_PATH/energy_histograms_cuts.py" "energy_histograms_cuts.py"
-    fi
 
-    log_info "Running energy_histograms.py for base "
+    log_info "Running histogram_mul_sub.py for base "
     if python3 energy_histograms.py  \
         > "energy_histograms.log" 2>&1; then
         log_success "energy_histograms.py completed "
     else
         log_error "energy_histograms.py failed "
-    fi
-
-    if [ -f "cuts.toml" ]; then
-        log_info "Running energy_histograms_cuts.py for base "
-        if python3 energy_histograms_cuts.py  \
-            > "energy_histograms.log" 2>&1; then
-            log_success "energy_histograms_cuts.py completed "
-        else
-            log_error "energy_histograms_cuts.py failed "
-        fi
     fi
 
     log_info "Waiting for all energy_histograms.py runs to complete..."

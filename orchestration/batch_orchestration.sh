@@ -362,7 +362,7 @@ main() {
     local files=()
     while IFS= read -r -d '' file; do
         files+=("$file")
-    done < <(find "$INS_DIR" -type f -print0 | sort -z)
+    done < <(find "$INS_DIR" -type f ! -name '*.toml' -print0 | sort -z)
     
     local total_files=${#files[@]}
     local processed=0

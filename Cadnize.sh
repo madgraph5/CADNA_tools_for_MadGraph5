@@ -66,7 +66,7 @@ if [ "$IS_MAC" = false ]; then
       echo "cadnaOpenmpCdebug is already in ../cudacpp.mk"
   else
       echo "putting -lcadnaOpenmpCdebug in ../cudacpp.mk"
-      sed -i 's/-L$(LIBDIR) -l$(MG5AMC_COMMONLIB)/-L$(LIBDIR) -l$(MG5AMC_COMMONLIB) -lcadnaOpenmpCdebug -fopenmp/g' ../cudacpp.mk
+      sed -i 's/-L$(LIBDIR) -l$(MG5AMC_COMMONLIB)/-L$(LIBDIR) -l$(MG5AMC_COMMONLIB) -lcadnaOpenmpC -fopenmp/g' ../cudacpp.mk
   fi
                 # Change to ../makefile
   #in the line "LIBFLAGS = -L$(LIBDIR) -l$(MG5AMC_COMMONLIB)" append -lcadnaOpenmpCdebug
@@ -81,7 +81,7 @@ if [ "$IS_MAC" = false ]; then
       else
           echo "putting -lcadnaOpenmpCdebug in ../makefile_original.mk"
 
-          sed -i 's/LINKLIBS = $(LINK_MADLOOP_LIB) $(LINK_LOOP_LIBS) -L\.\.\/\.\.\/lib\/ -ldhelas -ldsample -lmodel -lgeneric -lpdf -lgammaUPC -lcernlib $(llhapdf) -lbias/LINKLIBS = $(LINK_MADLOOP_LIB) $(LINK_LOOP_LIBS) -L..\/..\/lib\/ -ldhelas -ldsample -lmodel -lgeneric -lpdf -lgammaUPC -lcernlib $(llhapdf) -lbias -lcadnaOpenmpCdebug/g' ../makefile_original.mk
+          sed -i 's/LINKLIBS = $(LINK_MADLOOP_LIB) $(LINK_LOOP_LIBS) -L\.\.\/\.\.\/lib\/ -ldhelas -ldsample -lmodel -lgeneric -lpdf -lgammaUPC -lcernlib $(llhapdf) -lbias/LINKLIBS = $(LINK_MADLOOP_LIB) $(LINK_LOOP_LIBS) -L..\/..\/lib\/ -ldhelas -ldsample -lmodel -lgeneric -lpdf -lgammaUPC -lcernlib $(llhapdf) -lbias -lcadnaOpenmpC/g' ../makefile_original.mk
       fi
   fi
 else

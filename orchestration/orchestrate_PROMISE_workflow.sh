@@ -606,43 +606,51 @@ step3_run_all_checks() {
 #########################
 
 compare_results() {
-    local double_dir="$1"
-    local dir_name="$(basename "$double_dir")"
-    local float_dir="${double_dir}_float"
+    local base_dir="$1"
+    local dir_name
+    local double_dir
+    local float_dir
+    local double_output
+    local float_output
+    local comparison_output
+    
+    if [ -n "${ECM_TEV:-}" ]; then
+        local tag="${ECM_TEV}TeV"
+        dir_name="${base_dir}_${tag}"
+        double_dir="${WORK_DIR}/${base_dir}_${tag}_double"
+        float_dir="${WORK_DIR}/${base_dir}_${tag}_float"
+    else
+        dir_name="${base_dir}"
+        double_dir="${WORK_DIR}/${base_dir}_double"
+        float_dir="${WORK_DIR}/${base_dir}_float"
+    fi
     
     log_info "Comparing results for $dir_name..."
     
-    cd "$WORK_DIR/$double_dir"
+    cd "$double_dir"
     
-    # Create symlink to postprocess script
     if [ ! -L "native_output_postprocess.py" ]; then
         ln -sf "$CADNA_TOOLBOX_PATH/native_output_postprocess.py" .
     fi
     
-    local double_output="double_${dir_name}.out"
-    local float_output="${WORK_DIR}/${float_dir}/float_${dir_name}_float.out"
-    local comparison_output="gdb_run_output_float-O3_1.out"
+    double_output="double_${dir_name}.out"
+    float_output="${float_dir}/float_${dir_name}.out"
+    comparison_output="gdb_run_output_float-O3_1.out"
     
-    # Check if input files exist
     if [ ! -f "$double_output" ]; then
         log_error "Double output file not found: $double_output"
         return 1
     fi
     
     if [ ! -f "$float_output" ]; then
-	#echo From $(pwd)
-	#echo $dir_name
-	#echo $float_dir
         log_error "Float output file not found: $float_output"
         return 1
     fi
 
     if [ -f "$comparison_output" ]; then
-	    log_warn "Deleting previous comparison output in: $dir"
-	    rm $comparison_output
+        rm $comparison_output
     fi
 
-    # Run comparison
     local comparison_status=0
     if python3 native_output_postprocess.py \
         "$float_output" \
@@ -650,15 +658,12 @@ compare_results() {
         "$comparison_output" \
         > "comparison_${dir_name}.log" 2>&1; then
         log_success "Comparison completed for $dir_name"
-        comparison_status=0
     else
         log_error "Comparison failed for $dir_name"
-	    echo python3 native_output_postprocess.py "$float_output" "$double_output" "$comparison_output" 
-        tail -n 5  "comparison_${dir_name}.log" >&2
+        tail -n 5 "comparison_${dir_name}.log" >&2
         comparison_status=1
     fi
     
-    # Return to WORK_DIR
     cd "$WORK_DIR"
     
     return $comparison_status
@@ -669,7 +674,7 @@ step4_compare_all() {
     
     cd "$WORK_DIR"
     
-    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" | sed 's|^\./||' | sort))
+    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
     
     if [ ${#p1_dirs[@]} -eq 0 ]; then
         log_error "No P1_* directories found!"
@@ -678,7 +683,6 @@ step4_compare_all() {
     
     for dir in "${p1_dirs[@]}"; do
         wait_for_running_jobs "$MAX_PARALLEL_ANALYSIS"
-        
         compare_results "$dir" &
     done
     

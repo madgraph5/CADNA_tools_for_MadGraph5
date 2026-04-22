@@ -633,8 +633,8 @@ compare_results() {
         ln -sf "$CADNA_TOOLBOX_PATH/native_output_postprocess.py" .
     fi
     
-    double_output="double_${dir_name}.out"
-    float_output="${float_dir}/float_${dir_name}.out"
+    double_output="double_${dir_name}_double.out"
+    float_output="${float_dir}/float_${dir_name}_float.out"
     comparison_output="gdb_run_output_float-O3_1.out"
     
     if [ ! -f "$double_output" ]; then

@@ -36,6 +36,9 @@ MAX_PARALLEL_ANALYSIS=20
 ITERATIONS=10000000
 #ITERATIONS=10000
 
+# Centre-of-mass energy in TeV (optional - leave empty for default no-energy mode)
+# ECM_TEV=14
+
 # Enable mail on successful completition
 MAIL_ON_SUCCESS="true"
 USER="${USER}" #if not same as lxplus username, change accordingly
@@ -138,33 +141,88 @@ log_error() {
 }
 
 #########################
+# Helper: convert TeV to GeV
+#########################
+
+tev_to_gev() {
+    echo $(( $1 * 1000 ))
+}
+
+#########################
+# Helper: patch energy in check_sa.cc
+#########################
+
+patch_energy() {
+    local dir="$1"
+    local tev="$2"
+    local energy_gev
+    energy_gev=$(tev_to_gev "$tev")
+    local sa_file="$WORK_DIR/$dir/check_sa.cc"
+
+    if [ ! -f "$sa_file" ]; then
+        log_error "check_sa.cc not found in $dir"
+        return 1
+    fi
+
+    if ! grep -q "const fptype energy" "$sa_file"; then
+        log_error "No 'const fptype energy' line found in $sa_file"
+        return 1
+    fi
+
+    sed -i "s|^\([[:space:]]*\)const fptype energy = [^;]*;.*|\1const fptype energy = ${energy_gev}; // Ecms = ${energy_gev} GeV = ${tev} TeV|" "$sa_file"
+    log_info "Patched check_sa.cc in $dir: energy = ${energy_gev} GeV (${tev} TeV)"
+}
+
+#########################
 # Step 1: Find and copy P1_* directories
 #########################
 
 step1_copy_directories() {
     log_info "Step 1: Finding and copying P1_* directories..."
-    
+
     cd "$WORK_DIR"
-    
-    # Find all P1_* directories EXCLUDING _float versions
-    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" | sed 's|^\./||' | sort))
-    
+
+    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
+
     if [ ${#p1_dirs[@]} -eq 0 ]; then
         log_error "No P1_* directories found!"
         exit 1
     fi
-    
+
     log_info "Found ${#p1_dirs[@]} P1_* directories (excluding existing _float copies)"
-    
-    # Copy each directory with _float suffix
+
+    if [ -n "${ECM_TEV:-}" ]; then
+        log_info "Energy mode: ECM = ${ECM_TEV} TeV"
+    fi
+
     for dir in "${p1_dirs[@]}"; do
-        local float_dir="${dir}_float"
-        
-        if [ -d "$float_dir" ]; then
-            log_warn "Directory $float_dir already exists, skipping copy"
+        if [ -n "${ECM_TEV:-}" ]; then
+            local tag="${ECM_TEV}TeV"
+            local double_dir="${dir}_${tag}_double"
+            local float_dir="${dir}_${tag}_float"
+
+            if [ -d "$double_dir" ]; then
+                log_warn "$double_dir already exists, skipping"
+            else
+                log_info "Copying $dir -> $double_dir"
+                cp -rP "$dir" "$double_dir"
+            fi
+
+            if [ -d "$float_dir" ]; then
+                log_warn "$float_dir already exists, skipping"
+            else
+                log_info "Copying $dir -> $float_dir"
+                cp -rP "$dir" "$float_dir"
+            fi
         else
-            log_info "Copying $dir -> $float_dir"
-            cp -r "$dir" "$float_dir"
+            local float_dir="${dir}_float"
+
+            if [ -d "$float_dir" ]; then
+                log_warn "Directory $float_dir already exists, skipping copy"
+            else
+                log_info "Copying $dir -> $float_dir"
+                cp -r "$dir" "$float_dir"
+            fi
         fi
     done
 
@@ -234,61 +292,106 @@ compile_directory() {
     return $compile_status
 }
 
+setup_symlinks() {
+    local dir="$1"
+    local LOC_P1="$WORK_DIR/$dir"
+
+    ln -sf "$CADNA_TOOLBOX_PATH/Cadnize.sh"   "$LOC_P1/Cadnize.sh"
+    ln -sf "$CADNA_TOOLBOX_PATH/histogram.py" "$LOC_P1/histogram.py"
+    ln -sf "$CADNA_TOOLBOX_PATH/srcpy" "$LOC_P1/srcpy"
+}
+
 step2_compile_all() {
     log_info "Step 2: Compiling all directories serially and launching check_cpp.exe..."
 
-    
     cd "$WORK_DIR"
-    
-    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" | sed 's|^\./||' | sort))
-    
+
+    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
+
     local failed_dirs=()
-    
-    # Array to track all check_cpp.exe PIDs
+
     CHECK_CPP_PIDS=()
-    
+
     for dir in "${p1_dirs[@]}"; do
-        local float_dir="${dir}_float"
-        
-        # Compile double version
-        if ! compile_directory "$dir" "d" "double"; then
-            failed_dirs+=("$dir (double)")
+        if [ -n "${ECM_TEV:-}" ]; then
+            local tag="${ECM_TEV}TeV"
+            local double_dir="${dir}_${tag}_double"
+            local float_dir="${dir}_${tag}_float"
+
+            if [ -d "$double_dir" ]; then
+                if patch_energy "$double_dir" "$ECM_TEV"; then
+                    setup_symlinks "$double_dir"
+                    log_info "Running Cadnize.sh in $double_dir"
+                    (cd "$WORK_DIR/$double_dir" && bash Cadnize.sh > cadnize_double.log 2>&1) \
+                        || log_warn "Cadnize.sh reported non-zero for $double_dir"
+
+                    if ! compile_directory "$double_dir" "d" "double"; then
+                        failed_dirs+=("$double_dir (double)")
+                    else
+                        log_info "Launching check_cpp.exe for $double_dir (double) immediately..."
+                        run_check_cpp "$double_dir" "double"
+                        CHECK_CPP_PIDS+=($LAST_CHECK_PID)
+                    fi
+                else
+                    failed_dirs+=("$double_dir (patch)")
+                fi
+            fi
+
+            while [ $(count_running_check_cpp) -ge "$MAX_PARALLEL_CHECKS" ]; do
+                sleep 5
+            done
+
+            if [ -d "$float_dir" ]; then
+                if patch_energy "$float_dir" "$ECM_TEV"; then
+                    setup_symlinks "$float_dir"
+                    log_info "Running Cadnize.sh in $float_dir"
+                    (cd "$WORK_DIR/$float_dir" && bash Cadnize.sh > cadnize_float.log 2>&1) \
+                        || log_warn "Cadnize.sh reported non-zero for $float_dir"
+
+                    if ! compile_directory "$float_dir" "f" "float"; then
+                        failed_dirs+=("$float_dir (float)")
+                    else
+                        log_info "Launching check_cpp.exe for $float_dir (float) immediately..."
+                        run_check_cpp "$float_dir" "float"
+                        CHECK_CPP_PIDS+=($LAST_CHECK_PID)
+                    fi
+                else
+                    failed_dirs+=("$float_dir (patch)")
+                fi
+            fi
         else
-            # Launch check_cpp.exe immediately after successful compilation
-            log_info "Launching check_cpp.exe for $dir (double) immediately..."
-            run_check_cpp "$dir" "double"
-            # Store the PID (run_check_cpp sets LAST_CHECK_PID)
-            CHECK_CPP_PIDS+=($LAST_CHECK_PID)
-        fi
-        
-        # Compile float version
-        if [ -d "$float_dir" ]; then
-            if ! compile_directory "$float_dir" "f" "float"; then
-                failed_dirs+=("$float_dir (float)")
+            local float_dir="${dir}_float"
+
+            if ! compile_directory "$dir" "d" "double"; then
+                failed_dirs+=("$dir (double)")
             else
-                # Launch check_cpp.exe immediately after successful compilation
-                log_info "Launching check_cpp.exe for $float_dir (float) immediately..."
-                run_check_cpp "$float_dir" "float"
-                # Store the PID
+                log_info "Launching check_cpp.exe for $dir (double) immediately..."
+                run_check_cpp "$dir" "double"
                 CHECK_CPP_PIDS+=($LAST_CHECK_PID)
             fi
+
+            if [ -d "$float_dir" ]; then
+                if ! compile_directory "$float_dir" "f" "float"; then
+                    failed_dirs+=("$float_dir (float)")
+                else
+                    log_info "Launching check_cpp.exe for $float_dir (float) immediately..."
+                    run_check_cpp "$float_dir" "float"
+                    CHECK_CPP_PIDS+=($LAST_CHECK_PID)
+                fi
+            fi
         fi
-        
-        # Control parallel execution - wait if we hit the limit
-        # Check how many check_cpp.exe processes are currently running
+
         while [ $(count_running_check_cpp) -ge "$MAX_PARALLEL_CHECKS" ]; do
-            local running=$(count_running_check_cpp)
-            log_info "Parallel limit reached ($running/$MAX_PARALLEL_CHECKS running), waiting..."
             sleep 5
         done
     done
-    
+
     if [ ${#failed_dirs[@]} -gt 0 ]; then
         log_error "Compilation failed for the following directories:"
         printf '%s\n' "${failed_dirs[@]}"
         exit 1
     fi
-    
+
     log_success "Step 2 completed - all compilations successful"
     log_info "All check_cpp.exe processes have been launched in background"
     log_info "Total processes launched: ${#CHECK_CPP_PIDS[@]}"

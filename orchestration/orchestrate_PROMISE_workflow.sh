@@ -215,7 +215,15 @@ step1_copy_directories() {
                 cp -rP "$dir" "$float_dir"
             fi
         else
+            local double_dir="${dir}_double"
             local float_dir="${dir}_float"
+
+            if [ -d "$double_dir" ]; then
+                log_warn "$double_dir already exists, skipping"
+            else
+                log_info "Copying $dir -> $double_dir"
+                cp -rP "$dir" "$double_dir"
+            fi
 
             if [ -d "$float_dir" ]; then
                 log_warn "Directory $float_dir already exists, skipping copy"
@@ -341,14 +349,17 @@ step2_compile_all() {
                 fi
             fi
         else
+            local double_dir="${dir}_double"
             local float_dir="${dir}_float"
 
-            if ! compile_directory "$dir" "d" "double"; then
-                failed_dirs+=("$dir (double)")
-            else
-                log_info "Launching check_cpp.exe for $dir (double) immediately..."
-                run_check_cpp "$dir" "double"
-                CHECK_CPP_PIDS+=($LAST_CHECK_PID)
+            if [ -d "$double_dir" ]; then
+                if ! compile_directory "$double_dir" "d" "double"; then
+                    failed_dirs+=("$double_dir (double)")
+                else
+                    log_info "Launching check_cpp.exe for $double_dir (double) immediately..."
+                    run_check_cpp "$double_dir" "double"
+                    CHECK_CPP_PIDS+=($LAST_CHECK_PID)
+                fi
             fi
 
             if [ -d "$float_dir" ]; then

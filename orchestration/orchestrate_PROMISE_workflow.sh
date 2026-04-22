@@ -292,15 +292,6 @@ compile_directory() {
     return $compile_status
 }
 
-setup_symlinks() {
-    local dir="$1"
-    local LOC_P1="$WORK_DIR/$dir"
-
-    ln -sf "$CADNA_TOOLBOX_PATH/Cadnize.sh"   "$LOC_P1/Cadnize.sh"
-    ln -sf "$CADNA_TOOLBOX_PATH/histogram.py" "$LOC_P1/histogram.py"
-    ln -sf "$CADNA_TOOLBOX_PATH/srcpy" "$LOC_P1/srcpy"
-}
-
 step2_compile_all() {
     log_info "Step 2: Compiling all directories serially and launching check_cpp.exe..."
 
@@ -320,11 +311,6 @@ step2_compile_all() {
 
             if [ -d "$double_dir" ]; then
                 if patch_energy "$double_dir" "$ECM_TEV"; then
-                    setup_symlinks "$double_dir"
-                    log_info "Running Cadnize.sh in $double_dir"
-                    (cd "$WORK_DIR/$double_dir" && bash Cadnize.sh > cadnize_double.log 2>&1) \
-                        || log_warn "Cadnize.sh reported non-zero for $double_dir"
-
                     if ! compile_directory "$double_dir" "d" "double"; then
                         failed_dirs+=("$double_dir (double)")
                     else
@@ -343,11 +329,6 @@ step2_compile_all() {
 
             if [ -d "$float_dir" ]; then
                 if patch_energy "$float_dir" "$ECM_TEV"; then
-                    setup_symlinks "$float_dir"
-                    log_info "Running Cadnize.sh in $float_dir"
-                    (cd "$WORK_DIR/$float_dir" && bash Cadnize.sh > cadnize_float.log 2>&1) \
-                        || log_warn "Cadnize.sh reported non-zero for $float_dir"
-
                     if ! compile_directory "$float_dir" "f" "float"; then
                         failed_dirs+=("$float_dir (float)")
                     else

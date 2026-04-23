@@ -81,6 +81,8 @@ def extract_function_argumets(text: str, start_pos: int) -> Tuple[str, str]:
                 line = line.replace("vertexes","vertex")
             arg_non_const.append(line)
 
+    if len(arg_non_const) != 1:
+        print(f"Warning: {argumets_text} does not have only one returning argument")
     assert len(arg_non_const) ==1, "More than one returning argument"
     return arg_const, arg_non_const
 
@@ -94,6 +96,8 @@ def get_function_name(signature: str) -> str:
 
 def should_transform_propagator(func_text: str, func_name: str) -> bool:
     """Determine if function should be transformed."""
+    if should_transform_propagator_combined(func_text, func_name):
+        return False
     # Transform functions that:
     # 1. Have vertex or amplitude computation (contain vertex = or *vertex =)
     # 2. Are computation functions (end with _0 or similar pattern)
@@ -111,16 +115,28 @@ def should_transform_propagator(func_text: str, func_name: str) -> bool:
 
 def should_transform_propagator_dec(func_text: str, func_name: str) -> bool:
     """Determine if function should be transformed."""
-    # Transform functions that:
-    # 1. Have vertex or amplitude computation (contain vertex = or *vertex =)
-    # 2. Are computation functions (end with _0 or similar pattern)
-    # 3. Have cxtype_sv operations
+    if should_transform_propagator_combined_dec(func_text, func_name):
+        return False
     if re.search(r'\*?\s*vertex\s*\)', func_text) or 'allvertexes' in func_text:
         if re.search(r'cxtype_sv', func_text):
             return True
     if func_name.endswith('_0') or func_name.endswith('_1'):
         return True
     if func_name.startswith('V') or func_name.startswith('F'):
+        return True
+    return False
+
+def should_transform_propagator_combined(func_text: str, func_name: str) -> bool:
+    """Check if function is a combined function.
+    Combined functions have multiple underscores in name.
+    """
+    if func_name.count('_') > 1:
+        return True
+    return False
+
+def should_transform_propagator_combined_dec(func_text: str, func_name: str) -> bool:
+    """Check if function declaration is a combined function."""
+    if func_name.count('_') > 1:
         return True
     return False
 

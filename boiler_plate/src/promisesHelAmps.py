@@ -1,6 +1,8 @@
 import re
 from typing import List, Set, Tuple
 
+__WN__ = 6
+
 def extract_function_signature(text: str, start_pos: int) -> Tuple[str, int, int]:
     """Extract function signature and body bounds."""
     # Find the opening brace
@@ -24,9 +26,6 @@ def extract_function_signature(text: str, start_pos: int) -> Tuple[str, int, int
     return text[start_pos:func_end], func_start, func_end
 def extract_function_declaration(text: str, start_pos: int) -> Tuple[str, int, int]:
     """Extract function signature and body bounds."""
-    # Find the opening brace
-    brace_count = 0
-    in_function = False
     func_start = start_pos
     func_end = start_pos
 
@@ -244,9 +243,9 @@ def transform_propagators(func_text: str, func_name: str) -> Tuple[str, str, int
                         new_lines.append("\t \t const cxsmpl<" + ft_type + "> "+arg+" = static_cast<cxsmpl<" + ft_type + ">>("+arg+"_);")
                     else:
                         arg = arg.replace("all","")
-                        new_lines.append("\t \t cxsmpl<" + ft_type + "> " + arg + "[6];")
+                        new_lines.append("\t \t cxsmpl<" + ft_type + "> " + arg + "[" + str(__WN__) + "];")
                         #new_lines.append("\t \t cxsmpl<" + ft_type + "> " + arg  + "=static_cast<cxsmpl<" + ft_type + ">>(" + arg +");")
-            new_lines.append("\t\tfor(int i = 0; i < 6; ++i)")
+            new_lines.append("\t\tfor(int i = 0; i < "+ str (__WN__) + "; ++i)")
 
             new_lines.append("\t\t{")
             for arg in arg_const:
@@ -607,7 +606,8 @@ def transform_CPPP(func_text: str, func_name: str) -> Tuple[str, str, int]:
             exists = False
             for n in all_names:
                 if n == name:
-                    new_line = new_line.replace("fptype*","FT_"+name+"*")
+                    n = n.replace("_tmp","")
+                    new_line = new_line.replace("fptype*","FT_"+n+"*")
                     exists = True
                     break
 
@@ -861,6 +861,183 @@ def process_CPPP(input_text: str) -> Tuple[str, List[str]]:
 
     return output_text, sorted(set(ft_types))
 
+# Multiply propagator factor functions
+def should_transform_multiply_propagator_dec(func_text: str, func_name: str) -> bool:
+    """Check if function declaration is multiply_propagator_factor."""
+    if not "ALWAYS_INLINE;" in func_text:
+        return False
+    if "multiply_propagator_factor" in func_name:
+        return True
+    return False
+
+def should_transform_multiply_propagator_def(func_text: str, func_name: str) -> bool:
+    """Check if function definition is multiply_propagator_factor."""
+    if "ALWAYS_INLINE;" in func_text:
+        return False
+    if "multiply_propagator_factor" in func_name and "{" in func_text:
+        return True
+    return False
+
+def transform_multiply_propagator_def(func_text: str, func_name: str) -> Tuple[str, str, int]:
+    """Transform multiply_propagator_factor definition.
+    Rename win to win_, add cast, cast m to FT_TYPE.
+    """
+    if not should_transform_multiply_propagator_def(func_text, func_name):
+        return func_text, "", 0
+
+
+    ft_type = f"FT_{func_name}_multiplicator"
+    line_count_start = len(func_text.split('\n'))
+    lines = func_text.split('\n')
+    new_lines = []
+    added_cast = False
+    in_body = False
+
+    for line in lines:
+        new_line = line
+        if "{" in line:
+            in_body = True
+        if not in_body:
+            new_line = new_line.replace("fptype wavefunctionsin", "FT_w wavefunctionsin")
+            new_line = new_line.replace("fptype wavefunctionsout", "FT_w wavefunctionsout")
+        if in_body:
+            new_line = new_line.replace("fptype_sv","fptype")
+            new_line = new_line.replace("fptype", "FT_TYPE")
+            new_line = new_line.replace("cxtype_sv", "cxsmpl<FT_TYPE>")
+        # Add FT_TYPE to template parameters
+        if "template" in line and "class W_ACCESS" in line:
+            new_line = new_line.replace("class W_ACCESS", "class W_ACCESS, typename FT_TYPE")
+        # Rename win to win_ and add cast
+        if "win = W_ACCESS::kernelAccessConst" in line:
+            new_line = new_line.replace("win =", "win_ =")
+            new_line = new_line + "\n\tcxsmpl<FT_TYPE> win[7];\n\tfor(int i = 0; i < "+ str(__WN__) +"; i++){\n\t\tconst cxsmpl<FT_TYPE> win[i] = static_cast<FT_TYPE>(win_[i]);\n\t}"
+        if "wout[" in line:
+            new_line = new_line.replace("= ", "= static_cast<FT_w>(")
+            new_line = new_line.replace(";", ");")
+        if "define_gauge_dir" in line:
+            new_line = new_line.replace("define_gauge_dir", "define_gauge_dir<FT_TYPE>")
+        new_lines.append(new_line)
+
+    func_text = "\n".join(new_lines)
+    inserted_lines = len(func_text) - line_count_start
+
+    return func_text, ft_type, inserted_lines
+
+def transform_multiply_propagator_dec(func_text: str, func_name: str) -> Tuple[str, int]:
+    """Transform multiply_propagator_factor declaration.
+    Add FT_TYPE to template and change wavefunction args to FT_w.
+    """
+    line_count_start = len(func_text.split('\n'))
+    lines = func_text.split('\n')
+    new_lines = []
+
+    for line in lines:
+        new_line = line
+        # Add FT_TYPE to template parameters
+        if "template" in line and "ACCESS" in line:
+            new_line = new_line.replace("ACCESS", "ACCESS, typename FT_TYPE")
+        # Change wavefunction arguments to FT_w
+        if "wavefunction" in line and "fptype" in line:
+            new_line = new_line.replace("fptype wavefunctionsin", "FT_w wavefunctionsin")
+            new_line = new_line.replace("fptype wavefunctionsout", "FT_w wavefunctionsout")
+        new_lines.append(new_line)
+
+    func_text = "\n".join(new_lines)
+    inserted_lines = len(func_text) - line_count_start
+
+    return func_text, inserted_lines
+
+def process_multiply_propagator(input_text: str) -> Tuple[str, List[str]]:
+    """Process multiply_propagator_factor functions in the file."""
+    output_text = input_text
+    ft_types: List[str] = []
+
+    pattern = r'(template\s*<[^>]+>\s*)?__host__ __device__ INLINE void\s+(\w+)\s*\('
+    matches = list(re.finditer(pattern, input_text))
+
+    offset = 0
+
+
+    for match in matches:
+        func_name = match.group(2)
+        start_pos = match.start()
+
+        func_text, _, func_end = extract_function_signature(input_text, start_pos)
+        original_len = func_end - start_pos
+
+        if should_transform_multiply_propagator_def(func_text, func_name):
+            print(f"[MULTIPLY PROPAGATOR FACTOR] {func_name}")
+            transformed, ft_type, more = transform_multiply_propagator_def(func_text, func_name)
+            transformed_len = len(transformed)
+
+            out_start = start_pos + offset
+            out_end = out_start + original_len
+
+            output_text = output_text[:out_start] + transformed + output_text[out_end:]
+            offset += transformed_len - original_len
+
+        elif should_transform_multiply_propagator_dec(func_text, func_name):
+            func_text, _, func_end = extract_function_declaration(input_text, start_pos)
+            original_len = func_end - start_pos
+            print(f"[MULTIPLY PROPAGATOR FACTOR DEC] {func_name}")
+            transformed, more = transform_multiply_propagator_dec(func_text, func_name)
+            transformed_len = len(transformed)
+
+            out_start = start_pos + offset
+            out_end = out_start + original_len
+
+            output_text = output_text[:out_start] + transformed + output_text[out_end:]
+            offset += transformed_len - original_len
+
+    return output_text, ft_types
+
+def process_gauge_dir(input_text: str) -> Tuple[str, List[str]]:
+    """Process define_gauge_dir function in the file."""
+    output_text = input_text
+    ft_types: List[str] = []
+
+    pattern = r'((?:template\s*<[^>]+>\s*)?)__host__\s+__device__\s+INLINE\s+void\s+(define_gauge_dir)\s*\('
+    matches = list(re.finditer(pattern, input_text))
+    offset = 0
+
+    for match in matches:
+        func_name = match.group(2)
+        start_pos = match.start()
+
+        func_text, _, func_end = extract_function_signature(input_text, start_pos)
+        original_len = func_end - start_pos
+
+        if "define_gauge_dir" in func_text and "ALWAYS_INLINE" not in func_text:
+            print(f"[MULTIPLY PROPAGATOR FACTOR] {func_name}")
+            transformed = func_text.replace("__host__ __device__ INLINE void","template<typename FT_TYPE>\n\t__host__ __device__ INLINE void")
+            transformed = transformed.replace("cxtype_sv", "cxsmpl<FT_TYPE>")
+            transformed = transformed.replace("fptype_sv", "FT_TYPE")
+            transformed = transformed.replace("fptype","FT_TYPE")
+            transformed = transformed.replace("fpternary", "fpternary<FT_TYPE>")
+            transformed_len = len(transformed)
+
+            out_start = start_pos + offset
+            out_end = out_start + original_len
+
+            output_text = output_text[:out_start] + transformed + output_text[out_end:]
+            offset += transformed_len - original_len
+
+        elif "define_gauge_dir" in func_text and "ALWAYS_INLINE" in func_text:
+            func_text, _, func_end = extract_function_declaration(input_text, start_pos)
+            original_len = func_end - start_pos
+            print(f"[DEFINE GAUGE DIR DEC] {func_name}")
+            to_transform = func_text.replace("__host__ __device__ INLINE void","template<typename FT_TYPE>\n\t__host__ __device__ INLINE void")
+            transformed = to_transform.replace("fptype","FT_TYPE")
+            transformed_len = len(transformed)
+
+            out_start = start_pos + offset
+            out_end = out_start + original_len
+
+            output_text = output_text[:out_start] + transformed + output_text[out_end:]
+            offset += transformed_len - original_len
+
+    return output_text, ft_types
+
 def write_types(ft_types: List[str]):
     """Write list of FT types to a promiseTypes.txt and promiseTypes-Fitted.h """
     if os.path.exists(os.getcwd()+"/boilerplate/promiseTypes.h") :
@@ -916,6 +1093,12 @@ else:
 with open('HelAmps_sm_bckp', 'w') as f:
     f.write(input_text)
 
+#FD gauge guard
+if "define_gauge_dir" in input_text and "multiply_propagator_factor" in input_text:
+    print("\n" + "-FD-"*15)
+    print("\t\tTransformation for FD gauge")
+    print("-FD-"*15 + "\n" )
+    __WN__ = 7
 
 input_text = input_text.replace("cxzero_sv", "cxzero")
 input_text = input_text.replace("cxmake", "cxmake<fptype>")
@@ -930,8 +1113,13 @@ input_text = add_f_to_decimals(input_text)
 
 output_text, ft_types_in = process_incoming(input_text)
 output_text, ft_types = process_propagators(output_text)
-output_text, ft_types_combined = process_combined(output_text)
-ft_types = ft_types_in + ft_types + ft_types_combined
+ft_types = ft_types_in + ft_types
+
+if __WN__ == 7:
+    output_text, ft_types_combined = process_combined(output_text)
+    output_text, ft_types_mult = process_multiply_propagator(output_text)
+    output_text, ft_types = process_gauge_dir(output_text)
+    ft_types = ft_types  + ft_types_combined
 
 with open('HelAmps_sm.h', 'w') as f:
     f.write(output_text)
@@ -981,5 +1169,10 @@ print(f"\nTotal: {len(ft_types)} types")
 print(f"\nTransformed file written to: HelAmps_sm.h")
 
 print("=" * 50)
+if __WN__ == 7:
+    print("\n" + "-FD-" * 15)
+    print("\t\tTransformation for FD gauge")
+    print("-FD-" * 15 + "\n")
+
 print("\n\nWriting promiseTypes.txt")
 write_types(ft_types)

@@ -596,10 +596,18 @@ def transform_CPPP(func_text: str, func_name: str) -> Tuple[str, str, int]:
     for line in lines:
         new_line = line
 
-        if "cxtype_sv" in line :
+        # Handle cxtype_sv declarations - skip _tmp variants as they'll use same type as non-tmp
+        if "cxtype_sv" in line and "_tmp_sv" not in line:
             name = line.split("cxtype_sv")[1].split("_sv[")[0].replace(" ","")
             all_names.append(name)
             new_line = new_line.replace("cxtype_sv","cxsmpl<FT_"+name+">")
+
+        # Handle w_tmp_sv and amp_tmp_sv - use same type as non-tmp versions
+        if "cxtype_sv" in line and "_tmp_sv" in line:
+            if "w_tmp_sv" in line:
+                new_line = new_line.replace("cxtype_sv","cxsmpl<FT_w>")
+            elif "amp_tmp_sv" in line:
+                new_line = new_line.replace("cxtype_sv","cxsmpl<FT_amp>")
 
         if "fptype*" in line and "_fp" in line and not "reinterpret_cast" in line:
             name = line.split("fptype*")[1].split("_fp")[0].replace(" ","")
@@ -612,15 +620,22 @@ def transform_CPPP(func_text: str, func_name: str) -> Tuple[str, str, int]:
                     break
 
             if not exists:
-               print("Be aware! Did not find previous name created new one " + name)
-               new_line = new_line.replace("fptype*","cxsmpl<FT_"+name+">*")
-               all_names.append(name)
+                # Check for _tmp variants
+                if "_tmp_fp" in line:
+                    if "w_tmp_fp" in line:
+                        new_line = new_line.replace("fptype*","FT_w*")
+                    elif "amp_tmp_fp" in line:
+                        new_line = new_line.replace("fptype*","FT_amp*")
+                else:
+                    print("Be aware! Did not find previous name created new one " + name)
+                    new_line = new_line.replace("fptype*","cxsmpl<FT_"+name+">*")
+                    all_names.append(name)
 
         if "fptype" in line and "reinterpret_cast" in line:
-           if "amp" in line:
-               new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_amp*>")
-           if "w_fp" in line:
-               new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_w*>")
+            if "amp" in line:
+                new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_amp*>")
+            if "w_fp" in line:
+                new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_w*>")
 
         if "jamp_sv" in line and "cxzero" in line:
             new_line = new_line.replace("cxzero_sv","cxzero<FT_jamp>")

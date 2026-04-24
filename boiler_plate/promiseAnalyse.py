@@ -183,6 +183,6 @@ change_nevt_main(nb)
 #source promise enviroment
 print(" 6) Running promise")
 os.system("source " + PROMISE_env_path +".venv/bin/activate")
-os.system("promise --precs=hsd --nbDigits=3 --verbosity=1")
+os.system("promise --precs=sd --nbDigits=3 --verbosity=1")
 
 

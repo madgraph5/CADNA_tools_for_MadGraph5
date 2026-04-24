@@ -436,7 +436,7 @@ def transform_combined(func_text: str, func_name: str) -> Tuple[str, str, int]:
                     before_eq = line[:line.find("=")]
                     new_line = new_line[new_line.find("="):].replace("(*vertex)", "static_cast<cxsmpl<" + ft_type + ">>(*vertex)")
                     new_line = new_line[new_line.find("="):].replace("(*tmp)", "static_cast<cxsmpl<" + ft_type + ">>(*tmp)")
-                    new_line = new_line.replace("=", " = static_cast<cxsmpl<FT_w>>(")
+                    new_line = new_line.replace("=", " = static_cast<cxsmpl<FT_amp>>(")
                     new_line = before_eq + new_line.replace(";", ");")
 
         new_lines.append(new_line)
@@ -596,10 +596,18 @@ def transform_CPPP(func_text: str, func_name: str) -> Tuple[str, str, int]:
     for line in lines:
         new_line = line
 
-        if "cxtype_sv" in line :
+        # Handle cxtype_sv declarations - skip _tmp variants as they'll use same type as non-tmp
+        if "cxtype_sv" in line and "_tmp_sv" not in line:
             name = line.split("cxtype_sv")[1].split("_sv[")[0].replace(" ","")
             all_names.append(name)
             new_line = new_line.replace("cxtype_sv","cxsmpl<FT_"+name+">")
+
+        # Handle w_tmp_sv and amp_tmp_sv - use same type as non-tmp versions
+        if "cxtype_sv" in line and "_tmp_sv" in line:
+            if "w_tmp_sv" in line:
+                new_line = new_line.replace("cxtype_sv","cxsmpl<FT_w>")
+            elif "amp_tmp_sv" in line:
+                new_line = new_line.replace("cxtype_sv","cxsmpl<FT_amp>")
 
         if "fptype*" in line and "_fp" in line and not "reinterpret_cast" in line:
             name = line.split("fptype*")[1].split("_fp")[0].replace(" ","")
@@ -612,15 +620,27 @@ def transform_CPPP(func_text: str, func_name: str) -> Tuple[str, str, int]:
                     break
 
             if not exists:
-               print("Be aware! Did not find previous name created new one " + name)
-               new_line = new_line.replace("fptype*","cxsmpl<FT_"+name+">*")
-               all_names.append(name)
+                # Check for _tmp variants
+                if "_tmp_fp" in line:
+                    if "w_tmp_fp" in line:
+                        new_line = new_line.replace("fptype*","FT_w*")
+                    elif "amp_tmp_fp" in line:
+                        new_line = new_line.replace("fptype*","FT_amp*")
+                else:
+                    print("Be aware! Did not find previous name created new one " + name)
+                    new_line = new_line.replace("fptype*","cxsmpl<FT_"+name+">*")
+                    all_names.append(name)
 
         if "fptype" in line and "reinterpret_cast" in line:
-           if "amp" in line:
-               new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_amp*>")
-           if "w_fp" in line:
-               new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_w*>")
+            if "amp" in line:
+                new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_amp*>")
+            if "w_fp" in line:
+                new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_w*>")
+            if "_tmp_sv" in line:
+                if "w_tmp_sv" in line:
+                    new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_w*>")
+                elif "amp_tmp_sv" in line:
+                    new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_amp*>")
 
         if "jamp_sv" in line and "cxzero" in line:
             new_line = new_line.replace("cxzero_sv","cxzero<FT_jamp>")
@@ -908,11 +928,14 @@ def transform_multiply_propagator_def(func_text: str, func_name: str) -> Tuple[s
         if "template" in line and "class W_ACCESS" in line:
             new_line = new_line.replace("class W_ACCESS", "class W_ACCESS, typename FT_TYPE")
         # Rename win to win_ and add cast
+        if "wout = W_ACCESS::kernelAccess" in line:
+            new_line = new_line.replace("FT_TYPE", "FT_w")
         if "win = W_ACCESS::kernelAccessConst" in line:
             new_line = new_line.replace("win =", "win_ =")
-            new_line = new_line + "\n\tcxsmpl<FT_TYPE> win[7];\n\tfor(int i = 0; i < "+ str(__WN__) +"; i++){\n\t\tconst cxsmpl<FT_TYPE> win[i] = static_cast<FT_TYPE>(win_[i]);\n\t}"
+            new_line = new_line.replace("FT_TYPE", "FT_w")
+            new_line = new_line + "\n\tcxsmpl<FT_TYPE> win[7];\n\tfor(int i = 0; i < "+ str(__WN__) +"; i++){\n\t\twin[i] = static_cast<cxsmpl<FT_TYPE>>(win_[i]);\n\t}"
         if "wout[" in line:
-            new_line = new_line.replace("= ", "= static_cast<FT_w>(")
+            new_line = new_line.replace("= ", "= static_cast<cxsmpl<FT_w>>(")
             new_line = new_line.replace(";", ");")
         if "define_gauge_dir" in line:
             new_line = new_line.replace("define_gauge_dir", "define_gauge_dir<FT_TYPE>")
@@ -1014,6 +1037,7 @@ def process_gauge_dir(input_text: str) -> Tuple[str, List[str]]:
             transformed = transformed.replace("fptype_sv", "FT_TYPE")
             transformed = transformed.replace("fptype","FT_TYPE")
             transformed = transformed.replace("fpternary", "fpternary<FT_TYPE>")
+            transformed = transformed.replace("= fpternary<FT_TYPE>( q[0].real() >= 0.f , one , -one","= fpternary<FT_TYPE>( q[0].real() >= static_cast<FT_TYPE>( 0.f) , one , -one")
             transformed_len = len(transformed)
 
             out_start = start_pos + offset
@@ -1118,8 +1142,8 @@ ft_types = ft_types_in + ft_types
 if __WN__ == 7:
     output_text, ft_types_combined = process_combined(output_text)
     output_text, ft_types_mult = process_multiply_propagator(output_text)
-    output_text, ft_types = process_gauge_dir(output_text)
-    ft_types = ft_types  + ft_types_combined
+    output_text, ft_types_gauge = process_gauge_dir(output_text)
+    ft_types =  ft_types_combined + ft_types
 
 with open('HelAmps_sm.h', 'w') as f:
     f.write(output_text)

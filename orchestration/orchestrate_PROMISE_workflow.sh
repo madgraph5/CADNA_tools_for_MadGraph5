@@ -736,7 +736,7 @@ step5_promise_analysis() {
     
     cd "$WORK_DIR"
     
-    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" | sed 's|^\./||' | sort))
+    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*_double" ! -name "*TeV*" | sed 's|^\./||' | sort))
     
     if [ ${#p1_dirs[@]} -eq 0 ]; then
         log_error "No P1_* directories found!"
@@ -746,7 +746,12 @@ step5_promise_analysis() {
     for dir in "${p1_dirs[@]}"; do
         wait_for_running_jobs "$MAX_PARALLEL_ANALYSIS"
         
-        run_promise_analysis "$dir" &
+        if [ -n "${ECM_TEV:-}" ]; then
+            local tag="${ECM_TEV}TeV"
+            run_promise_analysis "${dir}_${tag}_double" &
+        else
+            run_promise_analysis "${dir}_double" &
+        fi
     done
     
     log_info "Waiting for all PROMISE analyses to complete..."

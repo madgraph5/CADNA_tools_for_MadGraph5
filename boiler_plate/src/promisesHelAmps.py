@@ -111,7 +111,7 @@ def should_transform_propagator(func_text: str, func_name: str) -> bool:
             return True
     if func_name.endswith('_0') or func_name.endswith('_1'):
         return True
-    if func_name.startswith('V') or func_name.startswith('F'):
+    if func_name.startswith('V') or func_name.startswith('F') or func_name.startswith('S'):
         return True
     return False
 
@@ -124,7 +124,7 @@ def should_transform_propagator_dec(func_text: str, func_name: str) -> bool:
             return True
     if func_name.endswith('_0') or func_name.endswith('_1'):
         return True
-    if func_name.startswith('V') or func_name.startswith('F'):
+    if func_name.startswith('V') or func_name.startswith('F') or func_name.startswith('S'):
         return True
     return False
 
@@ -197,6 +197,7 @@ def transform_propagators(func_text: str, func_name: str) -> Tuple[str, str, int
     line_count_start = len(func_text.split('\n'))
 
     ft_type = f"FT_{func_name}"
+    ft_types = [ft_type]
     arg_const, arg_out = extract_function_argumets(func_text, func_text.find('('))
     body_begin = func_text.find('{')
     func_text = func_text.replace("\r\n", "\n")
@@ -214,6 +215,12 @@ def transform_propagators(func_text: str, func_name: str) -> Tuple[str, str, int
 
     for line in lines:
         new_line = line
+        if "multiply_propagator_factor" in line:
+            ft_type2 = ft_type + "_multiplicator"
+            new_line = new_line.replace("ACCESS", "ACCESS, " + ft_type2)
+            ft_types.append(ft_type2)
+            new_lines.append(new_line)
+            continue
         if "ACCESS" in line:
             in_ACCESS = True
             for arg in arg_const:
@@ -313,7 +320,7 @@ def transform_propagators(func_text: str, func_name: str) -> Tuple[str, str, int
     # Reassemble
     inserted_lines = len(func_text.split('\n')) - line_count_start
 
-    return func_text, ft_type, inserted_lines
+    return func_text, ft_types, inserted_lines
 
 def transform_propagators_dec(func_text: str, func_name: str) -> Tuple[str, int]:
     """Transform a single function declaration to use FT_ types, now including F arrays and casting outputs."""
@@ -674,7 +681,7 @@ def process_propagators(input_text: str) -> Tuple[str, List[str]]:
         if definition:
 
             print(func_name)
-            transformed, ft_type, more = transform_propagators(func_text, func_name)
+            transformed, current_ft_types, more = transform_propagators(func_text, func_name)
             # If `more` is "additional lines", convert to characters instead or
             # better: let transform_function return the full transformed text
             transformed_len = len(transformed)
@@ -689,7 +696,7 @@ def process_propagators(input_text: str) -> Tuple[str, List[str]]:
             # Update offset by the character delta
             offset += transformed_len - original_len
 
-            ft_types.append(ft_type)
+            ft_types.extend(current_ft_types)
 
         elif should_transform_propagator_dec(func_text, func_name):
             func_text, _, func_end = extract_function_declaration(input_text, start_pos)

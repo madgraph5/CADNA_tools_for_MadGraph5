@@ -1133,8 +1133,8 @@ ft_types = ft_types_in + ft_types
 if __WN__ == 7:
     output_text, ft_types_combined = process_combined(output_text)
     output_text, ft_types_mult = process_multiply_propagator(output_text)
-    output_text, ft_types = process_gauge_dir(output_text)
-    ft_types = ft_types  + ft_types_combined
+    output_text, ft_types_gauge = process_gauge_dir(output_text)
+    ft_types =  ft_types_combined + ft_types
 
 with open('HelAmps_sm.h', 'w') as f:
     f.write(output_text)

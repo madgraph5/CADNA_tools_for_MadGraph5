@@ -37,7 +37,7 @@ def extract_function_declaration(text: str, start_pos: int) -> Tuple[str, int, i
 
     return text[start_pos:func_end], func_start, func_end
 
-def extract_function_argumets(text: str, start_pos: int) -> Tuple[str, str]:
+def extract_function_argumets(text: str, start_pos: int, combined: bool = False) -> Tuple[str, str]:
     """Extract function arguments from signature."""
     brace_count = 0
     in_args = False
@@ -81,9 +81,11 @@ def extract_function_argumets(text: str, start_pos: int) -> Tuple[str, str]:
                 line = line.replace("vertexes","vertex")
             arg_non_const.append(line)
 
-    if len(arg_non_const) != 1:
-        print(f"Warning: {argumets_text} does not have only one returning argument")
-    assert len(arg_non_const) ==1, "More than one returning argument"
+    if not combined:
+        if len(arg_non_const) != 1:
+            print(f"Warning: {argumets_text} does not have only one returning argument")
+        assert len(arg_non_const) ==1, "More than one returning argument"
+
     return arg_const, arg_non_const
 
 def get_function_name(signature: str) -> str:
@@ -130,14 +132,18 @@ def should_transform_propagator_combined(func_text: str, func_name: str) -> bool
     """Check if function is a combined function.
     Combined functions have multiple underscores in name.
     """
+    if "INLINE" in func_text:
+        return False
     if func_name.count('_') > 1:
-        return True
+        if "gauge" not in func_name and "propagator" not in func_name:
+            return True
     return False
 
 def should_transform_propagator_combined_dec(func_text: str, func_name: str) -> bool:
     """Check if function declaration is a combined function."""
     if func_name.count('_') > 1:
-        return True
+        if "gauge" not in func_name and "propagator" not in func_name:
+            return True
     return False
 
 def should_transform_incoming(func_text: str, func_name: str) -> bool:
@@ -336,6 +342,118 @@ def transform_propagators_dec(func_text: str, func_name: str) -> Tuple[str, int]
     inserted_lines = len(func_text) - line_count_start
 
     return func_text, inserted_lines
+
+# Combined functions
+
+def transform_combined_dec(func_text: str, func_name: str) -> Tuple[str, int]:
+    """Transform a combined function declaration.
+    If definition contains 'all' and not 'COUP', change type to FT_w.
+    """
+    if not should_transform_propagator_combined_dec(func_text, func_name):
+        return func_text, 0
+
+    line_count_start = len(func_text.split('\n'))
+    lines = func_text.split('\n')
+    new_lines = []
+
+    has_amp = func_name[-1] == "0"
+
+    for line in lines:
+        new_line = line
+        if "all" in line and "[]" in line and "COUP" not in line:
+            if "const" in line:
+                new_line = new_line.replace("fptype", "FT_w")
+            else:
+                if has_amp:
+                    new_line = new_line.replace("fptype", "FT_amp")
+                else:
+                    new_line = new_line.replace("fptype", "FT_w")
+        new_lines.append(new_line)
+
+    func_text = "\n".join(new_lines)
+    inserted_lines = len(func_text) - line_count_start
+
+    return func_text, inserted_lines
+
+def transform_combined(func_text: str, func_name: str) -> Tuple[str, str, int]:
+    """Transform a combined function to use FT_ types."""
+    line_count_start = len(func_text.split('\n'))
+
+    ft_type = f"FT_{func_name}"
+    arg_const, arg_out = extract_function_argumets(func_text, func_text.find('('), True)
+    body_begin = func_text.find('{')
+    func_text = func_text.replace("\r\n", "\n")
+
+    has_amp = func_name[-1] == "0"
+
+    body = func_text[body_begin:]
+    before = func_text[:body_begin]
+
+    lines = body.split('\n')
+    new_lines = []
+    in_ACCESS = False
+    find_end = False
+    OM3there = False
+
+    for line in lines:
+        new_line = line
+        if "ACCESS" in line:
+            in_ACCESS = True
+            for arg in arg_const:
+                arg = arg.replace("all", "")
+                if arg in new_line and "ACCESS" in new_line:
+                    new_line = new_line.replace(" " + arg, " " + arg + "_")
+                    if not "COUP" in new_line:
+                        new_line = new_line.replace("cxtype_sv", "cxsmpl<FT_w>")
+            for arg in arg_out:
+                if arg in new_line and "ACCESS" in new_line:
+                    if has_amp:
+                        new_line = new_line.replace("cxtype_sv", "cxsmpl<FT_amp>")
+                    else:
+                        new_line = new_line.replace("cxtype_sv", "cxsmpl<FT_w>")
+        if in_ACCESS and "ACCESS" not in new_line:
+            in_ACCESS = False
+        if not in_ACCESS:
+
+            if not has_amp:
+
+                if any( ar in line for ar in arg_out) and "<" not in line:
+                    before_eq = line[:line.find("=")]
+                    for a in arg_out:
+                        new_line = new_line[new_line.find("="):].replace(a, "static_cast<cxsmpl<" + ft_type + ">>(" + a )
+                    new_line = new_line.replace("]", "])")
+                    new_line = new_line.replace("=", " = static_cast<cxsmpl<FT_w>>(")
+                    new_line = before_eq + new_line.replace(";", ");")
+
+            else:
+                if "(*vertex)" in line and "const" not in line:
+                    before_eq = line[:line.find("=")]
+                    new_line = new_line[new_line.find("="):].replace("(*vertex)", "static_cast<cxsmpl<" + ft_type + ">>(*vertex)")
+                    new_line = new_line[new_line.find("="):].replace("(*tmp)", "static_cast<cxsmpl<" + ft_type + ">>(*tmp)")
+                    new_line = new_line.replace("=", " = static_cast<cxsmpl<FT_w>>(")
+                    new_line = before_eq + new_line.replace(";", ");")
+
+        new_lines.append(new_line)
+
+    lines_bf = before.split('\n')
+    new_lines_bf = []
+
+    for line in lines_bf:
+        new_line = line
+        if "all" in line and "[]" in line and "COUP" not in line:
+            new_line = new_line.replace("fptype", "FT_w")
+            if has_amp and not "const" in line:
+                new_line = new_line.replace("FT_w", "FT_amp")
+        new_lines_bf.append(new_line)
+
+    # Reassemble
+    func_text = "\n".join(new_lines_bf) + "\n".join(new_lines)
+    # Reassemble
+    inserted_lines = len(func_text.split('\n')) - line_count_start
+
+    return func_text, ft_type, inserted_lines
+
+
 def transform_incoming(func_text: str, func_name: str) -> Tuple[str, str, int]:
     """Transform a single function to use FT_ types, now including F arrays and casting outputs."""
 
@@ -451,6 +569,8 @@ def transform_incoming_dec(func_text: str, func_name: str) -> Tuple[str, int]:
     inserted_lines = len(func_text) - line_count_start
 
     return func_text, inserted_lines
+
+
 def transform_CPPP(func_text: str, func_name: str) -> Tuple[str, str, int]:
     """Transform a single function to use FT_ types, now including F arrays and casting outputs."""
 
@@ -656,6 +776,50 @@ def process_incoming(input_text: str) -> Tuple[str, List[str]]:
 
     return output_text, sorted(set(ft_types))
 
+def process_combined(input_text: str) -> Tuple[str, List[str]]:
+    """Process combined functions in the file."""
+    output_text = input_text
+    ft_types: List[str] = []
+
+    pattern = r'(template\s*<[^>]+>\s*)?__device__\s+(?:INLINE\s+)?void\s+(\w+)\s*\('
+    matches = list(re.finditer(pattern, input_text))
+
+    offset = 0
+
+    for match in matches:
+        func_name = match.group(2)
+        start_pos = match.start()
+
+        func_text, _, func_end = extract_function_signature(input_text, start_pos)
+        original_len = func_end - start_pos
+
+        if should_transform_propagator_combined(func_text, func_name):
+            print(f"[COMBINED] {func_name}")
+            transformed, ft_type, more = transform_combined(func_text, func_name)
+            transformed_len = len(transformed)
+
+            out_start = start_pos + offset
+            out_end = out_start + original_len
+
+            output_text = output_text[:out_start] + transformed + output_text[out_end:]
+            offset += transformed_len - original_len
+
+            ft_types.append(ft_type)
+
+        elif should_transform_propagator_combined_dec(func_text, func_name):
+            func_text, _, func_end = extract_function_declaration(input_text, start_pos)
+            original_len = func_end - start_pos
+            print(f"[COMBINED DECL] {func_name}")
+            transformed, more = transform_combined_dec(func_text, func_name)
+            transformed_len = len(transformed)
+
+            out_start = start_pos + offset
+            out_end = out_start + original_len
+
+            output_text = output_text[:out_start] + transformed + output_text[out_end:]
+            offset += transformed_len - original_len
+
+    return output_text, sorted(set(ft_types))
 
 def process_CPPP(input_text: str) -> Tuple[str, List[str]]:
     """Process entire file containing CPPProcess and return modified text and list of FT types."""
@@ -759,7 +923,8 @@ input_text = add_f_to_decimals(input_text)
 
 output_text, ft_types_in = process_incoming(input_text)
 output_text, ft_types = process_propagators(output_text)
-ft_types = ft_types_in + ft_types
+output_text, ft_types_combined = process_combined(output_text)
+ft_types = ft_types_in + ft_types + ft_types_combined
 
 with open('HelAmps_sm.h', 'w') as f:
     f.write(output_text)

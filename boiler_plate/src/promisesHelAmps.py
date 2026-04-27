@@ -925,9 +925,9 @@ def transform_multiply_propagator_def(func_text: str, func_name: str) -> Tuple[s
         # Rename win to win_ and add cast
         if "win = W_ACCESS::kernelAccessConst" in line:
             new_line = new_line.replace("win =", "win_ =")
-            new_line = new_line + "\n\tcxsmpl<FT_TYPE> win[7];\n\tfor(int i = 0; i < "+ str(__WN__) +"; i++){\n\t\tconst cxsmpl<FT_TYPE> win[i] = static_cast<cxsmpl<FT_TYPE>>(win_[i]);\n\t}"
+            new_line = new_line + "\n\tcxsmpl<FT_TYPE> win[7];\n\tfor(int i = 0; i < "+ str(__WN__) +"; i++){\n\t\twin[i] = static_cast<cxsmpl<FT_TYPE>>(win_[i]);\n\t}"
         if "wout[" in line:
-            new_line = new_line.replace("= ", "= static_cast<FT_w>(")
+            new_line = new_line.replace("= ", "= static_cast<cxsmpl<FT_w>>(")
             new_line = new_line.replace(";", ");")
         if "define_gauge_dir" in line:
             new_line = new_line.replace("define_gauge_dir", "define_gauge_dir<FT_TYPE>")
@@ -1029,6 +1029,7 @@ def process_gauge_dir(input_text: str) -> Tuple[str, List[str]]:
             transformed = transformed.replace("fptype_sv", "FT_TYPE")
             transformed = transformed.replace("fptype","FT_TYPE")
             transformed = transformed.replace("fpternary", "fpternary<FT_TYPE>")
+            transformed = transformed.replace("= fpternary<FT_TYPE>( q[0].real() >= 0.f , one , -one","= fpternary<FT_TYPE>( q[0].real() >= static_cast<FT_TYPE>( 0.f) , one , -one")
             transformed_len = len(transformed)
 
             out_start = start_pos + offset

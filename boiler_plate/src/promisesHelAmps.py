@@ -928,6 +928,8 @@ def transform_multiply_propagator_def(func_text: str, func_name: str) -> Tuple[s
         if "template" in line and "class W_ACCESS" in line:
             new_line = new_line.replace("class W_ACCESS", "class W_ACCESS, typename FT_TYPE")
         # Rename win to win_ and add cast
+        if "wout = W_ACCESS::kernelAccess" in line:
+            new_line = new_line.replace("FT_TYPE", "FT_w")
         if "win = W_ACCESS::kernelAccessConst" in line:
             new_line = new_line.replace("win =", "win_ =")
             new_line = new_line.replace("FT_TYPE", "FT_w")

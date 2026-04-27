@@ -436,7 +436,7 @@ def transform_combined(func_text: str, func_name: str) -> Tuple[str, str, int]:
                     before_eq = line[:line.find("=")]
                     new_line = new_line[new_line.find("="):].replace("(*vertex)", "static_cast<cxsmpl<" + ft_type + ">>(*vertex)")
                     new_line = new_line[new_line.find("="):].replace("(*tmp)", "static_cast<cxsmpl<" + ft_type + ">>(*tmp)")
-                    new_line = new_line.replace("=", " = static_cast<cxsmpl<FT_w>>(")
+                    new_line = new_line.replace("=", " = static_cast<cxsmpl<FT_amp>(")
                     new_line = before_eq + new_line.replace(";", ");")
 
         new_lines.append(new_line)

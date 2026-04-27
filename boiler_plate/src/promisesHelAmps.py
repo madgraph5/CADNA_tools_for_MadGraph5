@@ -636,6 +636,11 @@ def transform_CPPP(func_text: str, func_name: str) -> Tuple[str, str, int]:
                 new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_amp*>")
             if "w_fp" in line:
                 new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_w*>")
+            if "_tmp_sv" in line:
+                if "w_tmp_sv" in line:
+                    new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_w*>")
+                elif "amp_tmp_sv" in line:
+                    new_line = new_line.replace("reinterpret_cast<fptype*>","reinterpret_cast<FT_amp*>")
 
         if "jamp_sv" in line and "cxzero" in line:
             new_line = new_line.replace("cxzero_sv","cxzero<FT_jamp>")

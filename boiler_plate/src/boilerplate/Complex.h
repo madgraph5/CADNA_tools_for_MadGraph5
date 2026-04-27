@@ -539,13 +539,12 @@ cximag( const cxsmpl<FP>& c )
     return c.imag(); // cxsmpl::imag()
 }
 
-inline cxtype
-cxconj( const cxtype& c )
+template <typename FP>
+inline cxsmpl<FP>
+cxconj( const cxsmpl<FP>& c )
 {
     return conj( c ); // conj( cxsmpl )
 }
-
-
 
 inline cxtype                 // NOT __device__
 cxmake( const std::complex<float>& c ) // std::complex to cxsmpl (float-to-float or float-to-double)

@@ -5,4 +5,4 @@ files: main.cpp, ./src/boilerplate/promiseTypes.h #, ./src/CPPProcess.cc, ./src/
 log: log_promise.txt
 verbosity: 4
 output: output_promise_files
-nbDigits: 8
+nbDigits: 3

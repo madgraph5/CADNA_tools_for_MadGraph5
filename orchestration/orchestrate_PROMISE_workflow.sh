@@ -795,19 +795,42 @@ step6_copy_results() {
        log_error "Gathering promise results failed" 
     fi
 
- 
-    if python3 histogram_mul_sub.py \
-       > "histogram_log.txt" 2>&1; then
-        log_success "Histogram postprocess of result completed"
-        cp combined_precision.png "$OUTPUT_PATH/$name/combined_precision_$name.png"
-        cp deviants.png "$OUTPUT_PATH/$name/deviants_$name.png"
-        cp precision_vs_matrix_element.png "$OUTPUT_PATH/$name/precision_vs_matrix_element_$name.png"
-    else 
-       log_error "Histogram of results failed" 
-       
+    if [ -n "${ECM_TEV:-}" ]; then
+        local tag="${ECM_TEV}TeV"
+        local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
+        
+        for dir in "${p1_dirs[@]}"; do
+            local energy_dir="${dir}_${tag}_double"
+            if [ -d "$energy_dir" ]; then
+                cd "$WORK_DIR/$energy_dir"
+                if python3 histogram_mul_sub.py \
+                   > "histogram_log.txt" 2>&1; then
+                    log_success "Histogram postprocess of result completed for $energy_dir"
+                else 
+                    log_error "Histogram of results failed for $energy_dir" 
+                fi
+            fi
+        done
+        
+        cd "$WORK_DIR"
+        if [ -f "combined_precision.png" ]; then
+            cp combined_precision.png "$OUTPUT_PATH/$name/combined_precision_$name.png"
+            cp deviants.png "$OUTPUT_PATH/$name/deviants_$name.png"
+            cp precision_vs_matrix_element.png "$OUTPUT_PATH/$name/precision_vs_matrix_element_$name.png"
+        fi
+    else
+        if python3 histogram_mul_sub.py \
+           > "histogram_log.txt" 2>&1; then
+            log_success "Histogram postprocess of result completed"
+            cp combined_precision.png "$OUTPUT_PATH/$name/combined_precision_$name.png"
+            cp deviants.png "$OUTPUT_PATH/$name/deviants_$name.png"
+            cp precision_vs_matrix_element.png "$OUTPUT_PATH/$name/precision_vs_matrix_element_$name.png"
+        else 
+            log_error "Histogram of results failed" 
+        fi
     fi
 
-    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" | sed 's|^\./||' | sort))
+    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
     
     if [ ${#p1_dirs[@]} -eq 0 ]; then
         log_error "No P1_* directories found!"
@@ -815,12 +838,28 @@ step6_copy_results() {
     fi
     
     for dir in "${p1_dirs[@]}"; do
-        if [ ! -d "$OUTPUT_PATH/$name/$dir" ]; then
-            mkdir "$OUTPUT_PATH/$name/$dir"
+        if [ -n "${ECM_TEV:-}" ]; then
+            local tag="${ECM_TEV}TeV"
+            local energy_dir="${dir}_${tag}_double"
+            
+            if [ ! -d "$OUTPUT_PATH/$name/$energy_dir" ]; then
+                mkdir "$OUTPUT_PATH/$name/$energy_dir"
+            fi
+            
+            if [ -f "$WORK_DIR/$energy_dir/gdb_run_output_float-O3_1.out" ]; then
+                cp "$WORK_DIR/$energy_dir/gdb_run_output_float-O3_1.out" "$OUTPUT_PATH/$name/$energy_dir/."
+            fi
+            if [ -d "$WORK_DIR/$energy_dir/boiler_plate/output_promise_files" ]; then
+                cp "$WORK_DIR/$energy_dir/boiler_plate/output_promise_files/src/boilerplate/promiseTypes.h" "$OUTPUT_PATH/$name/$energy_dir/."
+            fi
+        else
+            if [ ! -d "$OUTPUT_PATH/$name/$dir" ]; then
+                mkdir "$OUTPUT_PATH/$name/$dir"
+            fi
+        
+            cp "$dir/gdb_run_output_float-O3_1.out" "$OUTPUT_PATH/$name/$dir/." 
+            cp "$dir/boiler_plate/output_promise_files/src/boilerplate/promiseTypes.h" "$OUTPUT_PATH/$name/$dir/."
         fi
-   
-        cp "$dir/gdb_run_output_float-O3_1.out" "$OUTPUT_PATH/$name/$dir/." 
-        cp "$dir/boiler_plate/output_promise_files/src/boilerplate/promiseTypes.h" "$OUTPUT_PATH/$name/$dir/."
     done
 
     log_success "Step 6 completed - all postprocessing of  analyses finished"

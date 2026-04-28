@@ -811,6 +811,11 @@ if [ -n "${ECM_TEV:-}" ]; then
                 fi
             fi
         done
+        if [ -f "combined_precision.png" ]; then
+            cp combined_precision.png "$OUTPUT_PATH/$name/combined_precision_$tag.png"
+            cp deviants.png "$OUTPUT_PATH/$name/deviants_$tag.png"
+            cp precision_vs_matrix_element.png "$OUTPUT_PATH/$name/precision_vs_matrix_element_$tag.png"
+        fi
     else
         cd "$WORK_DIR"
         local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
@@ -825,6 +830,11 @@ if [ -n "${ECM_TEV:-}" ]; then
                 fi
             fi
         done
+        if [ -f "combined_precision.png" ]; then
+            cp combined_precision.png "$OUTPUT_PATH/$name/combined_precision.png"
+            cp deviants.png "$OUTPUT_PATH/$name/deviants.png"
+            cp precision_vs_matrix_element.png "$OUTPUT_PATH/$name/precision_vs_matrix_element.png"
+        fi
     fi
 
     local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))

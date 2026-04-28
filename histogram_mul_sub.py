@@ -1,5 +1,4 @@
-# Post process mutliple Subprocesses into common graphs instead of individual graphs
-# Script is meant to be run from within -SubProcesses- dir
+# Post process multiple Subprocesses into common graphs
 import os
 import sys
 import srcpy.momnetumParser as mpr
@@ -174,9 +173,8 @@ if data:
            )
 
     fig.tight_layout()
-    bbox=dict(facecolor="white", alpha=0.7, edgecolor="none", pad=1)
-    plt.savefig(f"combined_accuracy.png")
-    print(f"Combined plot saved as combined_accuracy.png")
+    plt.savefig(f"combined_precision.png")
+    print(f"Combined plot saved as combined_precision.png")
     plt.close()
 
     deviants_list = [d.deviants for d in data]
@@ -231,11 +229,11 @@ if data:
     r"$\varepsilon = \frac{ |ME_{\mathrm{FP64}} - ME_{\mathrm{FP32}}| }{ "
     r"|ME_{\mathrm{FP64}} + ME_{\mathrm{FP32}}|}$")
 
-    ax.set_title(f'Accuarcy vs Matrix Element for {process}')
+    ax.set_title(f'Accuracy vs Matrix Element for {process}')
     ax.legend(title='Subprocess', fontsize=9)
     ax.grid(True, linestyle='--', alpha=0.4)
 
     fig.tight_layout()
-    plt.savefig("accuracy_vs_matrix_element.png")
-    print("Scatter plot saved as accuracy_vs_matrix_element.png")
+    plt.savefig("precision_vs_matrix_element.png")
+    print("Scatter plot saved as precision_vs_matrix_element.png")
     plt.close()

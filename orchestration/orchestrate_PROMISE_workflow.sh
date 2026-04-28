@@ -795,31 +795,37 @@ step6_copy_results() {
        log_error "Gathering promise results failed" 
     fi
 
-    if [ -n "${ECM_TEV:-}" ]; then
+if [ -n "${ECM_TEV:-}" ]; then
         local tag="${ECM_TEV}TeV"
         local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
         
         for dir in "${p1_dirs[@]}"; do
             local energy_dir="${dir}_${tag}_double"
             if [ -d "$energy_dir" ]; then
+                cd "$WORK_DIR/$energy_dir"
                 if python3 histogram_mul_sub.py \
-                   > "histogram_${energy_dir}_log.txt" 2>&1; then
+                   > "histogram_log.txt" 2>&1; then
                     log_success "Histogram postprocess of result completed"
                 else 
                     log_error "Histogram of results failed" 
                 fi
+                cd "$WORK_DIR"
             fi
-done
+        done
     else
+        cd "$WORK_DIR"
+        local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
         for dir in "${p1_dirs[@]}"; do
             local double_dir="${dir}_double"
             if [ -d "$double_dir" ]; then
+                cd "$WORK_DIR/$double_dir"
                 if python3 histogram_mul_sub.py \
-                   > "histogram_${double_dir}_log.txt" 2>&1; then
+                   > "histogram_log.txt" 2>&1; then
                     log_success "Histogram postprocess of result completed"
                 else 
                     log_error "Histogram of results failed" 
                 fi
+                cd "$WORK_DIR"
             fi
         done
     fi

@@ -58,14 +58,15 @@ process = process.replace("PROC_", "")
 print("Working on process: " + process)
 
 cwd = os.getcwd()
-base_dir = args.dir if args.dir else cwd
+base_dir = os.path.abspath(args.dir) if args.dir else cwd
+use_energy_dirs = args.dir is not None
 
 subdirs = [
     sub for sub in os.listdir(base_dir)
     if os.path.isdir(os.path.join(base_dir, sub))
     and sub.startswith("P1_")
     and "_float" not in sub
-    and "_double" not in sub
+    and ("_TeV" in sub if use_energy_dirs else "_TeV" not in sub)
 ]
 
 print("It contains the following subdirs:")
@@ -82,10 +83,11 @@ for subdir in subdirs:
     print(f"Working on {subdir}")
     d = Data()
 
-    if not os.path.isdir(subdir):
+    if not os.path.isdir(os.path.join(base_dir, subdir)):
         continue
 
-    os.chdir(subdir)
+    subdir_path = os.path.join(base_dir, subdir)
+    os.chdir(subdir_path)
     f = None
     for file in os.listdir("."):
         if "gdb_run_output" in file:
@@ -94,12 +96,12 @@ for subdir in subdirs:
 
     if f is None:
         print(f"{bcolors.WARNING}No gdb_run_output file found in {subdir}{bcolors.ENDC}")
-        os.chdir("..")
+        os.chdir(base_dir)
         continue
 
     if os.path.getsize(f) == 0:
         print(f"{bcolors.WARNING}gdb_run_output file is empty in {subdir}{bcolors.ENDC}")
-        os.chdir("..")
+        os.chdir(base_dir)
         continue
     ff = open(f, "r")
 
@@ -142,7 +144,7 @@ for subdir in subdirs:
 
     data.append(d)
     valid_subdirs.append(subdir)
-    os.chdir("..")
+    os.chdir(base_dir)
 
 # Plotting combined results
 if data:

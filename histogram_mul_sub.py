@@ -35,12 +35,14 @@ class Data:
     momentaAccuracyZeros: int = 0
 
 cwd = os.getcwd()
+cwd_name = cwd.split("/")[-1]
+parent_name = cwd.split("/")[-2]
 
-if cwd.split("/")[-1] != "SubProcesses":
+if cwd_name != "SubProcesses":
     exit("Not in SubProcesses dir")
 
-process = cwd.split("/")[-2]
-process = process.replace("PROC_", "")
+process = parent_name.replace("PROC_", "")
+
 print("Working on process: " + process)
 
 subdirs = [

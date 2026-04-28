@@ -802,14 +802,13 @@ if [ -n "${ECM_TEV:-}" ]; then
         for dir in "${p1_dirs[@]}"; do
             local energy_dir="${dir}_${tag}_double"
             if [ -d "$energy_dir" ]; then
-                cd "$WORK_DIR/$energy_dir"
+                cd "$WORK_DIR"
                 if python3 histogram_mul_sub.py \
-                   > "histogram_log.txt" 2>&1; then
+                   > "histogram_${energy_dir}_log.txt" 2>&1; then
                     log_success "Histogram postprocess of result completed"
                 else 
                     log_error "Histogram of results failed" 
                 fi
-                cd "$WORK_DIR"
             fi
         done
     else
@@ -818,14 +817,12 @@ if [ -n "${ECM_TEV:-}" ]; then
         for dir in "${p1_dirs[@]}"; do
             local double_dir="${dir}_double"
             if [ -d "$double_dir" ]; then
-                cd "$WORK_DIR/$double_dir"
                 if python3 histogram_mul_sub.py \
-                   > "histogram_log.txt" 2>&1; then
+                   > "histogram_${double_dir}_log.txt" 2>&1; then
                     log_success "Histogram postprocess of result completed"
                 else 
                     log_error "Histogram of results failed" 
                 fi
-                cd "$WORK_DIR"
             fi
         done
     fi

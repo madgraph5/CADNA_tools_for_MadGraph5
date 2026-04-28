@@ -803,7 +803,7 @@ step6_copy_results() {
             local energy_dir="${dir}_${tag}_double"
             if [ -d "$energy_dir" ]; then
                 cd "$WORK_DIR/$energy_dir"
-                if python3 histogram_mul_sub.py \
+                if python3 histogram_mul_sub.py --dir .. \
                    > "histogram_log.txt" 2>&1; then
                     log_success "Histogram postprocess of result completed for $energy_dir"
                 else 

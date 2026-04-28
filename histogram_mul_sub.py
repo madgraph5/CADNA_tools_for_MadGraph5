@@ -1,9 +1,16 @@
 # Post process mutliple Subprocesses into common graphs instead of individual graphs
 # Script is ment to be run from within -Suprocesses- dir
 import os
+import sys
+import argparse
 import srcpy.momnetumParser as mpr
 import matplotlib.pyplot as plt
 import numpy as np
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='Post-process histogram data')
+parser.add_argument('--dir', type=str, default=None, help='Base directory to process')
+args, unknown = parser.parse_known_args()
 
 from dataclasses import dataclass, field
 from typing import List, Any
@@ -50,13 +57,15 @@ process = cwd.split("/")[-2]
 process = process.replace("PROC_", "")
 print("Working on process: " + process)
 
-base_dir =  cwd
+cwd = os.getcwd()
+base_dir = args.dir if args.dir else cwd
 
 subdirs = [
     sub for sub in os.listdir(base_dir)
     if os.path.isdir(os.path.join(base_dir, sub))
     and sub.startswith("P1_")
     and "_float" not in sub
+    and "_double" not in sub
 ]
 
 print("It contains the following subdirs:")

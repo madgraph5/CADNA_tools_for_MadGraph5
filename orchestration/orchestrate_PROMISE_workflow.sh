@@ -37,7 +37,7 @@ ITERATIONS=10000000
 #ITERATIONS=10000
 
 # Centre-of-mass energy in TeV (optional - leave empty for default no-energy mode)
-# ECM_TEV=14
+ ECM_TEV=14
 
 # Enable mail on successful completition
 MAIL_ON_SUCCESS="true"

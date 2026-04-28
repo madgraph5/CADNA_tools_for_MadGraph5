@@ -1,6 +1,6 @@
-# Post process mutliple Subprocesses into common graphs instead of individual graphs
-# Script is ment to be run from within -Suprocesses- dir
+# Post process multiple Subprocesses into common graphs
 import os
+import sys
 import srcpy.momnetumParser as mpr
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,7 +21,6 @@ class bcolors:
 
 @dataclass
 class Data:
-    # "Matrix element = "
     matrix_element: List[Any] = field(default_factory=list)
     matrixElementAccuracy: List[Any] = field(default_factory=list)
     maxCol: List[Any] = field(default_factory=list)
@@ -30,33 +29,27 @@ class Data:
     matrixElementAccuracyZeros: int = 0
     matrixElementAccuracyOnes: int = 0
     matrixElementAccuracyTwos: int = 0
-
-    # "Momentum: "
-
     momentum: List[Any] = field(default_factory=list)
     momentaAccuracy: List[Any] = field(default_factory=list)
     colinearities: List[Any] = field(default_factory=list)
     momentaAccuracyZeros: int = 0
 
-
-# begining of the postprocess
-# get current directory:
 cwd = os.getcwd()
+cwd_name = cwd.split("/")[-1]
+parent_name = cwd.split("/")[-2]
 
-if cwd.split("/")[-1] != "SubProcesses":
+if cwd_name != "SubProcesses":
     exit("Not in SubProcesses dir")
 
-process = cwd.split("/")[-2]
-process = process.replace("PROC_", "")
+process = parent_name.replace("PROC_", "")
+
 print("Working on process: " + process)
 
-base_dir =  cwd
-
 subdirs = [
-    sub for sub in os.listdir(base_dir)
-    if os.path.isdir(os.path.join(base_dir, sub))
+    sub for sub in os.listdir(".")
+    if os.path.isdir(sub)
     and sub.startswith("P1_")
-    and "_float" not in sub
+    and sub.endswith("_double")
 ]
 
 print("It contains the following subdirs:")
@@ -94,7 +87,6 @@ for subdir in subdirs:
         continue
     ff = open(f, "r")
 
-    # parse the file
     d.matrixElementAccuracyZeros = mpr.parse_file_woMomP(ff, d.momentum, d.matrix_element,
                                                    d.matrixElementAccuracy, d.matrixElementAccuracyZeros)
 
@@ -118,7 +110,7 @@ for subdir in subdirs:
         for i in range(nb_par):
             for j in range(i + 1, nb_par):
                 if i == 0 and j == 1:
-                    continue  # skip (0, 1) - always colinear
+                    continue
                 col.append(mpr.colinearity(d.momentum[ev][i], d.momentum[ev][j]))
                 soft.append(mpr.softness(d.momentum[ev][i], d.momentum[ev][j]))
         d.maxCol.append(max(col))
@@ -135,7 +127,6 @@ for subdir in subdirs:
     valid_subdirs.append(subdir)
     os.chdir("..")
 
-# Plotting combined results
 if data:
     names = [s.replace("P1_", "") for s in valid_subdirs]
     zeros = [d.matrixElementAccuracyZeros for d in data]
@@ -150,7 +141,6 @@ if data:
     rects2 = ax.bar(x, ones, width, label='Sig. digits 1', color='green')
     rects3 = ax.bar(x + width, twos, width, label='Sig. digits 2', color='orange')
 
-    # Add labels above bars
     ax.bar_label(rects1, padding=0)
     ax.bar_label(rects2, padding=6)
     ax.bar_label(rects3, padding=3)
@@ -169,7 +159,7 @@ if data:
             ymax = max(z, o, t)
             ax.text(
                 x[i],
-                ymax * 0.5,          # higher than bar labels
+                ymax * 0.5,
                 f"*{r:.2f} %",
                 ha="center",
                 va="bottom",
@@ -185,18 +175,15 @@ if data:
            )
 
     fig.tight_layout()
-    bbox=dict(facecolor="white", alpha=0.7, edgecolor="none", pad=1)
-    plt.savefig(f"combined_accuracy.png")
-    print(f"Combined plot saved as combined_accuracy.png")
+    plt.savefig(f"combined_precision.png")
+    print(f"Combined plot saved as combined_precision.png")
     plt.close()
 
-    # Plotting deviants
     deviants_list = [d.deviants for d in data]
 
     fig, ax = plt.subplots(figsize=(12, 7))
     rects = ax.bar(names, deviants_list, color='red')
 
-    # Add labels above bars
     ax.bar_label(rects, padding=3)
 
     ax.set_xlabel('Subdirectories')
@@ -209,28 +196,26 @@ if data:
     print(f"Deviants plot saved as deviants.png")
     plt.close()
 
-    # Scatter plot: log10(Matrix element) vs accuracy (< 3)
     fig, ax = plt.subplots(figsize=(10, 7))
-    
+
     for subdir, d in zip(valid_subdirs, data):
         label = subdir.replace("P1_", "")
-    
+
         me = np.array(d.matrix_element)
         prec = np.array(d.matrixElementAccuracy)
-    
+
         mask = prec < 3
         if not np.any(mask):
             continue
-    
-        # Safe log10: ignore non-positive values
+
         me_sel = me[mask]
         prec_sel = prec[mask]
-    
+
         positive_mask = np.abs(me_sel) > 0
         me_sel = me_sel[positive_mask]
         prec_sel = prec_sel[positive_mask]
         prec_pert = np.random.uniform(-0.4,0.4, len(prec_sel))
-    
+
         ax.scatter(
             np.log10(np.abs(me_sel)),
             prec_sel + prec_pert,
@@ -238,7 +223,7 @@ if data:
             alpha=0.7,
             label=label
         )
-    
+
     ax.set_xlabel(r'$\log_{10}(|\mathrm{Matrix\ Element}|)$')
 
     ax.set_ylabel(    r"Sig. dig. "
@@ -246,12 +231,11 @@ if data:
     r"$\varepsilon = \frac{ |ME_{\mathrm{FP64}} - ME_{\mathrm{FP32}}| }{ "
     r"|ME_{\mathrm{FP64}} + ME_{\mathrm{FP32}}|}$")
 
-    ax.set_title(f'Accuarcy vs Matrix Element for {process}')
+    ax.set_title(f'Accuracy vs Matrix Element for {process}')
     ax.legend(title='Subprocess', fontsize=9)
     ax.grid(True, linestyle='--', alpha=0.4)
-    
-    fig.tight_layout()
-    plt.savefig("accuracy_vs_matrix_element.png")
-    print("Scatter plot saved as accuracy_vs_matrix_element.png")
-    plt.close()
 
+    fig.tight_layout()
+    plt.savefig("precision_vs_matrix_element.png")
+    print("Scatter plot saved as precision_vs_matrix_element.png")
+    plt.close()

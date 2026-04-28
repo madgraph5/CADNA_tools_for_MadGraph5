@@ -37,7 +37,7 @@ ITERATIONS=10000000
 #ITERATIONS=10000
 
 # Centre-of-mass energy in TeV (optional - leave empty for default no-energy mode)
-# ECM_TEV=14
+ ECM_TEV=14
 
 # Enable mail on successful completition
 MAIL_ON_SUCCESS="true"
@@ -795,19 +795,49 @@ step6_copy_results() {
        log_error "Gathering promise results failed" 
     fi
 
- 
-    if python3 histogram_mul_sub.py \
-       > "histogram_log.txt" 2>&1; then
-        log_success "Histogram postprocess of result completed"
-        cp combined_precision.png "$OUTPUT_PATH/$name/combined_precision_$name.png"
-        cp deviants.png "$OUTPUT_PATH/$name/deviants_$name.png"
-        cp precision_vs_matrix_element.png "$OUTPUT_PATH/$name/precision_vs_matrix_element_$name.png"
-    else 
-       log_error "Histogram of results failed" 
-       
+if [ -n "${ECM_TEV:-}" ]; then
+        local tag="${ECM_TEV}TeV"
+        local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
+        
+        for dir in "${p1_dirs[@]}"; do
+            local energy_dir="${dir}_${tag}_double"
+            if [ -d "$energy_dir" ]; then
+                cd "$WORK_DIR"
+                if python3 histogram_mul_sub.py \
+                   > "histogram_${energy_dir}_log.txt" 2>&1; then
+                    log_success "Histogram postprocess of result completed"
+                else 
+                    log_error "Histogram of results failed" 
+                fi
+            fi
+        done
+        if [ -f "combined_precision.png" ]; then
+            cp combined_precision.png "$OUTPUT_PATH/$name/combined_precision_$tag.png"
+            cp deviants.png "$OUTPUT_PATH/$name/deviants_$tag.png"
+            cp precision_vs_matrix_element.png "$OUTPUT_PATH/$name/precision_vs_matrix_element_$tag.png"
+        fi
+    else
+        cd "$WORK_DIR"
+        local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
+        for dir in "${p1_dirs[@]}"; do
+            local double_dir="${dir}_double"
+            if [ -d "$double_dir" ]; then
+                if python3 histogram_mul_sub.py \
+                   > "histogram_${double_dir}_log.txt" 2>&1; then
+                    log_success "Histogram postprocess of result completed"
+                else 
+                    log_error "Histogram of results failed" 
+                fi
+            fi
+        done
+        if [ -f "combined_precision.png" ]; then
+            cp combined_precision.png "$OUTPUT_PATH/$name/combined_precision.png"
+            cp deviants.png "$OUTPUT_PATH/$name/deviants.png"
+            cp precision_vs_matrix_element.png "$OUTPUT_PATH/$name/precision_vs_matrix_element.png"
+        fi
     fi
 
-    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" | sed 's|^\./||' | sort))
+    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
     
     if [ ${#p1_dirs[@]} -eq 0 ]; then
         log_error "No P1_* directories found!"
@@ -815,13 +845,77 @@ step6_copy_results() {
     fi
     
     for dir in "${p1_dirs[@]}"; do
-        if [ ! -d "$OUTPUT_PATH/$name/$dir" ]; then
-            mkdir "$OUTPUT_PATH/$name/$dir"
+        if [ -n "${ECM_TEV:-}" ]; then
+            local tag="${ECM_TEV}TeV"
+            local energy_dir="${dir}_${tag}_double"
+            
+            if [ ! -d "$OUTPUT_PATH/$name/$energy_dir" ]; then
+                mkdir "$OUTPUT_PATH/$name/$energy_dir"
+            fi
+            
+            if [ -f "$WORK_DIR/$energy_dir/gdb_run_output_float-O3_1.out" ]; then
+                cp "$WORK_DIR/$energy_dir/gdb_run_output_float-O3_1.out" "$OUTPUT_PATH/$name/$energy_dir/."
+            fi
+            if [ -d "$WORK_DIR/$energy_dir/boiler_plate/output_promise_files" ]; then
+                cp "$WORK_DIR/$energy_dir/boiler_plate/output_promise_files/src/boilerplate/promiseTypes.h" "$OUTPUT_PATH/$name/$energy_dir/."
+            fi
+        else
+            if [ ! -d "$OUTPUT_PATH/$name/$dir" ]; then
+                mkdir "$OUTPUT_PATH/$name/$dir"
+            fi
+        
+            cp "$dir/gdb_run_output_float-O3_1.out" "$OUTPUT_PATH/$name/$dir/." 
+            cp "$dir/boiler_plate/output_promise_files/src/boilerplate/promiseTypes.h" "$OUTPUT_PATH/$name/$dir/."
         fi
-   
-        cp "$dir/gdb_run_output_float-O3_1.out" "$OUTPUT_PATH/$name/$dir/." 
-        cp "$dir/boiler_plate/output_promise_files/src/boilerplate/promiseTypes.h" "$OUTPUT_PATH/$name/$dir/."
     done
+
+    # Copy promise analysis log files and create summary
+    log_info "Creating promise analysis summary..."
+    
+    {
+        echo "PROMISE Analysis Summary"
+        echo "========================"
+        echo ""
+    } > "$OUTPUT_PATH/$name/promise_summary.txt"
+    
+    for dir in "${p1_dirs[@]}"; do
+        if [ -n "${ECM_TEV:-}" ]; then
+            local energy_dir="${dir}_${ECM_TEV}TeV_double"
+            local log_file="$WORK_DIR/$energy_dir/promise_analysis_${energy_dir}.log"
+        else
+            local log_file="$WORK_DIR/${dir}_double/promise_analysis_${dir}_double.log"
+        fi
+        
+        if [ -f "$log_file" ]; then
+            cp "$log_file" "$OUTPUT_PATH/$name/"
+            
+            # Extract key stats from the log
+            local dir_name
+            if [ -n "${ECM_TEV:-}" ]; then
+                dir_name="${dir}_${ECM_TEV}TeV_double"
+            else
+                dir_name="${dir}_double"
+            fi
+            
+            echo "=== $dir_name ===" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            
+            # Extract compilation and execution stats
+            grep "compilations" "$log_file" | head -1 >> "$OUTPUT_PATH/$name/promise_summary.txt" 2>/dev/null || echo "compilations info not found" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            grep "executions" "$log_file" | head -1 >> "$OUTPUT_PATH/$name/promise_summary.txt" 2>/dev/null || echo "executions info not found" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            
+            # Extract timing
+            grep "took" "$log_file" | head -1 >> "$OUTPUT_PATH/$name/promise_summary.txt" 2>/dev/null || echo "timing info not found" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            
+            # Extract final result
+            grep "final result" "$log_file" | head -1 >> "$OUTPUT_PATH/$name/promise_summary.txt" 2>/dev/null || echo "final result info not found" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            
+            echo "" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+        fi
+    done
+    
+    if [ -f "$OUTPUT_PATH/$name/promise_summary.txt" ]; then
+        log_success "Promise analysis summary created"
+    fi
 
     log_success "Step 6 completed - all postprocessing of  analyses finished"
 }

@@ -800,34 +800,34 @@ step6_copy_results() {
         local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
         
         for dir in "${p1_dirs[@]}"; do
-            local energy_dir="${dir}_${tag}_double"
-            if [ -d "$energy_dir" ]; then
-                cd "$WORK_DIR/$energy_dir"
-                if python3 histogram_mul_sub.py --dir .. \
+            local double_dir="${dir}_double"
+            if [ -d "$double_dir" ]; then
+                cd "$double_dir"
+                if python3 histogram_mul_sub.py \
                    > "histogram_log.txt" 2>&1; then
-                    log_success "Histogram postprocess of result completed for $energy_dir"
+                    log_success "Histogram postprocess of result completed"
                 else 
-                    log_error "Histogram of results failed for $energy_dir" 
+                    log_error "Histogram of results failed" 
                 fi
+                cd "$WORK_DIR"
             fi
         done
-        
-        cd "$WORK_DIR"
-        if [ -f "combined_precision.png" ]; then
-            cp combined_precision.png "$OUTPUT_PATH/$name/combined_precision_$name.png"
-            cp deviants.png "$OUTPUT_PATH/$name/deviants_$name.png"
-            cp precision_vs_matrix_element.png "$OUTPUT_PATH/$name/precision_vs_matrix_element_$name.png"
-        fi
     else
-        if python3 histogram_mul_sub.py \
-           > "histogram_log.txt" 2>&1; then
-            log_success "Histogram postprocess of result completed"
-            cp combined_precision.png "$OUTPUT_PATH/$name/combined_precision_$name.png"
-            cp deviants.png "$OUTPUT_PATH/$name/deviants_$name.png"
-            cp precision_vs_matrix_element.png "$OUTPUT_PATH/$name/precision_vs_matrix_element_$name.png"
-        else 
-            log_error "Histogram of results failed" 
-        fi
+        cd "$WORK_DIR"
+        local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
+        for dir in "${p1_dirs[@]}"; do
+            local double_dir="${dir}_double"
+            if [ -d "$double_dir" ]; then
+                cd "$double_dir"
+                if python3 histogram_mul_sub.py \
+                   > "histogram_log.txt" 2>&1; then
+                    log_success "Histogram postprocess of result completed"
+                else 
+                    log_error "Histogram of results failed" 
+                fi
+                cd "$WORK_DIR"
+            fi
+        done
     fi
 
     local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))

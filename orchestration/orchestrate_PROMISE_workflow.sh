@@ -862,6 +862,54 @@ step6_copy_results() {
         fi
     done
 
+    # Copy promise analysis log files and create summary
+    log_info "Creating promise analysis summary..."
+    
+    {
+        echo "PROMISE Analysis Summary"
+        echo "========================"
+        echo ""
+    } > "$OUTPUT_PATH/$name/promise_summary.txt"
+    
+    for dir in "${p1_dirs[@]}"; do
+        if [ -n "${ECM_TEV:-}" ]; then
+            local energy_dir="${dir}_${ECM_TEV}TeV_double"
+            local log_file="$WORK_DIR/$energy_dir/promise_analysis_${energy_dir}.log"
+        else
+            local log_file="$WORK_DIR/${dir}_double/promise_analysis_${dir}_double.log"
+        fi
+        
+        if [ -f "$log_file" ]; then
+            cp "$log_file" "$OUTPUT_PATH/$name/"
+            
+            # Extract key stats from the log
+            local dir_name
+            if [ -n "${ECM_TEV:-}" ]; then
+                dir_name="${dir}_${ECM_TEV}TeV_double"
+            else
+                dir_name="${dir}_double"
+            fi
+            
+            echo "=== $dir_name ===" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            
+            # Extract compilation and execution stats
+            grep "compilations" "$log_file" | head -1 >> "$OUTPUT_PATH/$name/promise_summary.txt" 2>/dev/null || echo "compilations info not found" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            grep "executions" "$log_file" | head -1 >> "$OUTPUT_PATH/$name/promise_summary.txt" 2>/dev/null || echo "executions info not found" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            
+            # Extract timing
+            grep "took" "$log_file" | head -1 >> "$OUTPUT_PATH/$name/promise_summary.txt" 2>/dev/null || echo "timing info not found" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            
+            # Extract final result
+            grep "final result" "$log_file" | head -1 >> "$OUTPUT_PATH/$name/promise_summary.txt" 2>/dev/null || echo "final result info not found" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            
+            echo "" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+        fi
+    done
+    
+    if [ -f "$OUTPUT_PATH/$name/promise_summary.txt" ]; then
+        log_success "Promise analysis summary created"
+    fi
+
     log_success "Step 6 completed - all postprocessing of  analyses finished"
 }
 #########################

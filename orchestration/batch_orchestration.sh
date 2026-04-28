@@ -216,12 +216,26 @@ process_file() {
     fi
     
     log_success "Orchestration script linked"
-    
+     
     #########################
-    # Step 4: Run orchestration
+    # Step 4: Copy cuts.toml to SubProcesses dir 
     #########################
     
-    log_info "Step 4: Running orchestration for $file_name"
+    local cuts_file="$SCRIPT_START_DIR/$INS_DIR/cuts/$file_name.toml" 
+
+    if [ -f  $cuts_file ]; then
+	    cp -f $cuts_file "./cuts.toml"
+	    echo "Successfully copied cuts to respective SubProcesses dir."
+    else	
+	    echo "Were not able to find the cuts.toml as:"
+	    echo $cuts_file
+    fi
+
+    #########################
+    # Step 5: Run orchestration
+    #########################
+    
+    log_info "Step 5: Running orchestration for $file_name"
     
     local orch_log="$BATCH_LOG_DIR/${file_name}_orchestration.log"
     local orch_pid_file="$BATCH_LOG_DIR/${file_name}_orchestration.pid"
@@ -237,10 +251,10 @@ process_file() {
     log_info "Log file: $orch_log"
     
     #########################
-    # Step 5: Wait for orchestration to complete
+    # Step 6: Wait for orchestration to complete
     #########################
     
-    log_info "Step 5: Waiting for orchestration to complete..."
+    log_info "Step 6: Waiting for orchestration to complete..."
     log_info "Monitoring for step completions (won't spam logs)"
     
     local wait_interval=10  # Check every 10 seconds
@@ -290,17 +304,13 @@ process_file() {
     fi
     
     #########################
-    # Step 6: Return to base directory
+    # Step 7: Clean up (optional - can be disabled)
     #########################
     
     cd "$SCRIPT_START_DIR"
 
-    #########################
-    # Step 7: Clean up (optional - can be disabled)
-    #########################
-    
     if [ "${KEEP_PROCESS_DIRS:-false}" != "true" ]; then
-        log_info "Step 6: Cleaning up process directory"
+        log_info "Step 7: Cleaning up process directory"
         
         # Get the base process directory (parent of SubProcesses)
         local base_dir=$(dirname "$subprocess_dir")
@@ -352,7 +362,7 @@ main() {
     local files=()
     while IFS= read -r -d '' file; do
         files+=("$file")
-    done < <(find "$INS_DIR" -type f -print0 | sort -z)
+    done < <(find "$INS_DIR" -type f ! -name '*.toml' -print0 | sort -z)
     
     local total_files=${#files[@]}
     local processed=0
@@ -415,3 +425,4 @@ main() {
 
 # Run main function
 main "$@"
+

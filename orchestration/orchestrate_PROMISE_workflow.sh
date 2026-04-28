@@ -36,6 +36,9 @@ MAX_PARALLEL_ANALYSIS=20
 ITERATIONS=10000000
 #ITERATIONS=10000
 
+# Centre-of-mass energy in TeV (optional - leave empty for default no-energy mode)
+ ECM_TEV=14
+
 # Enable mail on successful completition
 MAIL_ON_SUCCESS="true"
 USER="${USER}" #if not same as lxplus username, change accordingly
@@ -138,33 +141,96 @@ log_error() {
 }
 
 #########################
+# Helper: convert TeV to GeV
+#########################
+
+tev_to_gev() {
+    echo $(( $1 * 1000 ))
+}
+
+#########################
+# Helper: patch energy in check_sa.cc
+#########################
+
+patch_energy() {
+    local dir="$1"
+    local tev="$2"
+    local energy_gev
+    energy_gev=$(tev_to_gev "$tev")
+    local sa_file="$WORK_DIR/$dir/check_sa.cc"
+
+    if [ ! -f "$sa_file" ]; then
+        log_error "check_sa.cc not found in $dir"
+        return 1
+    fi
+
+    if ! grep -q "const fptype energy" "$sa_file"; then
+        log_error "No 'const fptype energy' line found in $sa_file"
+        return 1
+    fi
+
+    sed -i "s|^\([[:space:]]*\)const fptype energy = [^;]*;.*|\1const fptype energy = ${energy_gev}; // Ecms = ${energy_gev} GeV = ${tev} TeV|" "$sa_file"
+    log_info "Patched check_sa.cc in $dir: energy = ${energy_gev} GeV (${tev} TeV)"
+}
+
+#########################
 # Step 1: Find and copy P1_* directories
 #########################
 
 step1_copy_directories() {
     log_info "Step 1: Finding and copying P1_* directories..."
-    
+
     cd "$WORK_DIR"
-    
-    # Find all P1_* directories EXCLUDING _float versions
-    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" | sed 's|^\./||' | sort))
-    
+
+    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
+
     if [ ${#p1_dirs[@]} -eq 0 ]; then
         log_error "No P1_* directories found!"
         exit 1
     fi
-    
+
     log_info "Found ${#p1_dirs[@]} P1_* directories (excluding existing _float copies)"
-    
-    # Copy each directory with _float suffix
+
+    if [ -n "${ECM_TEV:-}" ]; then
+        log_info "Energy mode: ECM = ${ECM_TEV} TeV"
+    fi
+
     for dir in "${p1_dirs[@]}"; do
-        local float_dir="${dir}_float"
-        
-        if [ -d "$float_dir" ]; then
-            log_warn "Directory $float_dir already exists, skipping copy"
+        if [ -n "${ECM_TEV:-}" ]; then
+            local tag="${ECM_TEV}TeV"
+            local double_dir="${dir}_${tag}_double"
+            local float_dir="${dir}_${tag}_float"
+
+            if [ -d "$double_dir" ]; then
+                log_warn "$double_dir already exists, skipping"
+            else
+                log_info "Copying $dir -> $double_dir"
+                cp -rP "$dir" "$double_dir"
+            fi
+
+            if [ -d "$float_dir" ]; then
+                log_warn "$float_dir already exists, skipping"
+            else
+                log_info "Copying $dir -> $float_dir"
+                cp -rP "$dir" "$float_dir"
+            fi
         else
-            log_info "Copying $dir -> $float_dir"
-            cp -r "$dir" "$float_dir"
+            local double_dir="${dir}_double"
+            local float_dir="${dir}_float"
+
+            if [ -d "$double_dir" ]; then
+                log_warn "$double_dir already exists, skipping"
+            else
+                log_info "Copying $dir -> $double_dir"
+                cp -rP "$dir" "$double_dir"
+            fi
+
+            if [ -d "$float_dir" ]; then
+                log_warn "Directory $float_dir already exists, skipping copy"
+            else
+                log_info "Copying $dir -> $float_dir"
+                cp -r "$dir" "$float_dir"
+            fi
         fi
     done
 
@@ -237,58 +303,87 @@ compile_directory() {
 step2_compile_all() {
     log_info "Step 2: Compiling all directories serially and launching check_cpp.exe..."
 
-    
     cd "$WORK_DIR"
-    
-    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" | sed 's|^\./||' | sort))
-    
+
+    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
+
     local failed_dirs=()
-    
-    # Array to track all check_cpp.exe PIDs
+
     CHECK_CPP_PIDS=()
-    
+
     for dir in "${p1_dirs[@]}"; do
-        local float_dir="${dir}_float"
-        
-        # Compile double version
-        if ! compile_directory "$dir" "d" "double"; then
-            failed_dirs+=("$dir (double)")
+        if [ -n "${ECM_TEV:-}" ]; then
+            local tag="${ECM_TEV}TeV"
+            local double_dir="${dir}_${tag}_double"
+            local float_dir="${dir}_${tag}_float"
+
+            if [ -d "$double_dir" ]; then
+                if patch_energy "$double_dir" "$ECM_TEV"; then
+                    if ! compile_directory "$double_dir" "d" "double"; then
+                        failed_dirs+=("$double_dir (double)")
+                    else
+                        log_info "Launching check_cpp.exe for $double_dir (double) immediately..."
+                        run_check_cpp "$double_dir" "double"
+                        CHECK_CPP_PIDS+=($LAST_CHECK_PID)
+                    fi
+                else
+                    failed_dirs+=("$double_dir (patch)")
+                fi
+            fi
+
+            while [ $(count_running_check_cpp) -ge "$MAX_PARALLEL_CHECKS" ]; do
+                sleep 5
+            done
+
+            if [ -d "$float_dir" ]; then
+                if patch_energy "$float_dir" "$ECM_TEV"; then
+                    if ! compile_directory "$float_dir" "f" "float"; then
+                        failed_dirs+=("$float_dir (float)")
+                    else
+                        log_info "Launching check_cpp.exe for $float_dir (float) immediately..."
+                        run_check_cpp "$float_dir" "float"
+                        CHECK_CPP_PIDS+=($LAST_CHECK_PID)
+                    fi
+                else
+                    failed_dirs+=("$float_dir (patch)")
+                fi
+            fi
         else
-            # Launch check_cpp.exe immediately after successful compilation
-            log_info "Launching check_cpp.exe for $dir (double) immediately..."
-            run_check_cpp "$dir" "double"
-            # Store the PID (run_check_cpp sets LAST_CHECK_PID)
-            CHECK_CPP_PIDS+=($LAST_CHECK_PID)
-        fi
-        
-        # Compile float version
-        if [ -d "$float_dir" ]; then
-            if ! compile_directory "$float_dir" "f" "float"; then
-                failed_dirs+=("$float_dir (float)")
-            else
-                # Launch check_cpp.exe immediately after successful compilation
-                log_info "Launching check_cpp.exe for $float_dir (float) immediately..."
-                run_check_cpp "$float_dir" "float"
-                # Store the PID
-                CHECK_CPP_PIDS+=($LAST_CHECK_PID)
+            local double_dir="${dir}_double"
+            local float_dir="${dir}_float"
+
+            if [ -d "$double_dir" ]; then
+                if ! compile_directory "$double_dir" "d" "double"; then
+                    failed_dirs+=("$double_dir (double)")
+                else
+                    log_info "Launching check_cpp.exe for $double_dir (double) immediately..."
+                    run_check_cpp "$double_dir" "double"
+                    CHECK_CPP_PIDS+=($LAST_CHECK_PID)
+                fi
+            fi
+
+            if [ -d "$float_dir" ]; then
+                if ! compile_directory "$float_dir" "f" "float"; then
+                    failed_dirs+=("$float_dir (float)")
+                else
+                    log_info "Launching check_cpp.exe for $float_dir (float) immediately..."
+                    run_check_cpp "$float_dir" "float"
+                    CHECK_CPP_PIDS+=($LAST_CHECK_PID)
+                fi
             fi
         fi
-        
-        # Control parallel execution - wait if we hit the limit
-        # Check how many check_cpp.exe processes are currently running
+
         while [ $(count_running_check_cpp) -ge "$MAX_PARALLEL_CHECKS" ]; do
-            local running=$(count_running_check_cpp)
-            log_info "Parallel limit reached ($running/$MAX_PARALLEL_CHECKS running), waiting..."
             sleep 5
         done
     done
-    
+
     if [ ${#failed_dirs[@]} -gt 0 ]; then
         log_error "Compilation failed for the following directories:"
         printf '%s\n' "${failed_dirs[@]}"
         exit 1
     fi
-    
+
     log_success "Step 2 completed - all compilations successful"
     log_info "All check_cpp.exe processes have been launched in background"
     log_info "Total processes launched: ${#CHECK_CPP_PIDS[@]}"
@@ -511,43 +606,51 @@ step3_run_all_checks() {
 #########################
 
 compare_results() {
-    local double_dir="$1"
-    local dir_name="$(basename "$double_dir")"
-    local float_dir="${double_dir}_float"
+    local base_dir="$1"
+    local dir_name
+    local double_dir
+    local float_dir
+    local double_output
+    local float_output
+    local comparison_output
+    
+    if [ -n "${ECM_TEV:-}" ]; then
+        local tag="${ECM_TEV}TeV"
+        dir_name="${base_dir}_${tag}"
+        double_dir="${WORK_DIR}/${base_dir}_${tag}_double"
+        float_dir="${WORK_DIR}/${base_dir}_${tag}_float"
+    else
+        dir_name="${base_dir}"
+        double_dir="${WORK_DIR}/${base_dir}_double"
+        float_dir="${WORK_DIR}/${base_dir}_float"
+    fi
     
     log_info "Comparing results for $dir_name..."
     
-    cd "$WORK_DIR/$double_dir"
+    cd "$double_dir"
     
-    # Create symlink to postprocess script
     if [ ! -L "native_output_postprocess.py" ]; then
         ln -sf "$CADNA_TOOLBOX_PATH/native_output_postprocess.py" .
     fi
     
-    local double_output="double_${dir_name}.out"
-    local float_output="${WORK_DIR}/${float_dir}/float_${dir_name}_float.out"
-    local comparison_output="gdb_run_output_float-O3_1.out"
+    double_output="double_${dir_name}_double.out"
+    float_output="${float_dir}/float_${dir_name}_float.out"
+    comparison_output="gdb_run_output_float-O3_1.out"
     
-    # Check if input files exist
     if [ ! -f "$double_output" ]; then
         log_error "Double output file not found: $double_output"
         return 1
     fi
     
     if [ ! -f "$float_output" ]; then
-	#echo From $(pwd)
-	#echo $dir_name
-	#echo $float_dir
         log_error "Float output file not found: $float_output"
         return 1
     fi
 
     if [ -f "$comparison_output" ]; then
-	    log_warn "Deleting previous comparison output in: $dir"
-	    rm $comparison_output
+        rm $comparison_output
     fi
 
-    # Run comparison
     local comparison_status=0
     if python3 native_output_postprocess.py \
         "$float_output" \
@@ -555,15 +658,12 @@ compare_results() {
         "$comparison_output" \
         > "comparison_${dir_name}.log" 2>&1; then
         log_success "Comparison completed for $dir_name"
-        comparison_status=0
     else
         log_error "Comparison failed for $dir_name"
-	    echo python3 native_output_postprocess.py "$float_output" "$double_output" "$comparison_output" 
-        tail -n 5  "comparison_${dir_name}.log" >&2
+        tail -n 5 "comparison_${dir_name}.log" >&2
         comparison_status=1
     fi
     
-    # Return to WORK_DIR
     cd "$WORK_DIR"
     
     return $comparison_status
@@ -574,7 +674,7 @@ step4_compare_all() {
     
     cd "$WORK_DIR"
     
-    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" | sed 's|^\./||' | sort))
+    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
     
     if [ ${#p1_dirs[@]} -eq 0 ]; then
         log_error "No P1_* directories found!"
@@ -583,7 +683,6 @@ step4_compare_all() {
     
     for dir in "${p1_dirs[@]}"; do
         wait_for_running_jobs "$MAX_PARALLEL_ANALYSIS"
-        
         compare_results "$dir" &
     done
     
@@ -637,7 +736,7 @@ step5_promise_analysis() {
     
     cd "$WORK_DIR"
     
-    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" | sed 's|^\./||' | sort))
+    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*_double" ! -name "*TeV*" | sed 's|^\./||' | sort))
     
     if [ ${#p1_dirs[@]} -eq 0 ]; then
         log_error "No P1_* directories found!"
@@ -647,7 +746,12 @@ step5_promise_analysis() {
     for dir in "${p1_dirs[@]}"; do
         wait_for_running_jobs "$MAX_PARALLEL_ANALYSIS"
         
-        run_promise_analysis "$dir" &
+        if [ -n "${ECM_TEV:-}" ]; then
+            local tag="${ECM_TEV}TeV"
+            run_promise_analysis "${dir}_${tag}_double" &
+        else
+            run_promise_analysis "${dir}_double" &
+        fi
     done
     
     log_info "Waiting for all PROMISE analyses to complete..."
@@ -691,19 +795,49 @@ step6_copy_results() {
        log_error "Gathering promise results failed" 
     fi
 
- 
-    if python3 histogram_mul_sub.py \
-       > "histogram_log.txt" 2>&1; then
-        log_success "Histogram postprocess of result completed"
-        cp combined_precision.png "$OUTPUT_PATH/$name/combined_precision_$name.png"
-        cp deviants.png "$OUTPUT_PATH/$name/deviants_$name.png"
-        cp precision_vs_matrix_element.png "$OUTPUT_PATH/$name/precision_vs_matrix_element_$name.png"
-    else 
-       log_error "Histogram of results failed" 
-       
+if [ -n "${ECM_TEV:-}" ]; then
+        local tag="${ECM_TEV}TeV"
+        local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
+        
+        for dir in "${p1_dirs[@]}"; do
+            local energy_dir="${dir}_${tag}_double"
+            if [ -d "$energy_dir" ]; then
+                cd "$WORK_DIR"
+                if python3 histogram_mul_sub.py \
+                   > "histogram_${energy_dir}_log.txt" 2>&1; then
+                    log_success "Histogram postprocess of result completed"
+                else 
+                    log_error "Histogram of results failed" 
+                fi
+            fi
+        done
+        if [ -f "combined_precision.png" ]; then
+            cp combined_precision.png "$OUTPUT_PATH/$name/combined_precision_$tag.png"
+            cp deviants.png "$OUTPUT_PATH/$name/deviants_$tag.png"
+            cp precision_vs_matrix_element.png "$OUTPUT_PATH/$name/precision_vs_matrix_element_$tag.png"
+        fi
+    else
+        cd "$WORK_DIR"
+        local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
+        for dir in "${p1_dirs[@]}"; do
+            local double_dir="${dir}_double"
+            if [ -d "$double_dir" ]; then
+                if python3 histogram_mul_sub.py \
+                   > "histogram_${double_dir}_log.txt" 2>&1; then
+                    log_success "Histogram postprocess of result completed"
+                else 
+                    log_error "Histogram of results failed" 
+                fi
+            fi
+        done
+        if [ -f "combined_precision.png" ]; then
+            cp combined_precision.png "$OUTPUT_PATH/$name/combined_precision.png"
+            cp deviants.png "$OUTPUT_PATH/$name/deviants.png"
+            cp precision_vs_matrix_element.png "$OUTPUT_PATH/$name/precision_vs_matrix_element.png"
+        fi
     fi
 
-    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" | sed 's|^\./||' | sort))
+    local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
     
     if [ ${#p1_dirs[@]} -eq 0 ]; then
         log_error "No P1_* directories found!"
@@ -711,13 +845,77 @@ step6_copy_results() {
     fi
     
     for dir in "${p1_dirs[@]}"; do
-        if [ ! -d "$OUTPUT_PATH/$name/$dir" ]; then
-            mkdir "$OUTPUT_PATH/$name/$dir"
+        if [ -n "${ECM_TEV:-}" ]; then
+            local tag="${ECM_TEV}TeV"
+            local energy_dir="${dir}_${tag}_double"
+            
+            if [ ! -d "$OUTPUT_PATH/$name/$energy_dir" ]; then
+                mkdir "$OUTPUT_PATH/$name/$energy_dir"
+            fi
+            
+            if [ -f "$WORK_DIR/$energy_dir/gdb_run_output_float-O3_1.out" ]; then
+                cp "$WORK_DIR/$energy_dir/gdb_run_output_float-O3_1.out" "$OUTPUT_PATH/$name/$energy_dir/."
+            fi
+            if [ -d "$WORK_DIR/$energy_dir/boiler_plate/output_promise_files" ]; then
+                cp "$WORK_DIR/$energy_dir/boiler_plate/output_promise_files/src/boilerplate/promiseTypes.h" "$OUTPUT_PATH/$name/$energy_dir/."
+            fi
+        else
+            if [ ! -d "$OUTPUT_PATH/$name/$dir" ]; then
+                mkdir "$OUTPUT_PATH/$name/$dir"
+            fi
+        
+            cp "$dir/gdb_run_output_float-O3_1.out" "$OUTPUT_PATH/$name/$dir/." 
+            cp "$dir/boiler_plate/output_promise_files/src/boilerplate/promiseTypes.h" "$OUTPUT_PATH/$name/$dir/."
         fi
-   
-        cp "$dir/gdb_run_output_float-O3_1.out" "$OUTPUT_PATH/$name/$dir/." 
-        cp "$dir/boiler_plate/output_promise_files/src/boilerplate/promiseTypes.h" "$OUTPUT_PATH/$name/$dir/."
     done
+
+    # Copy promise analysis log files and create summary
+    log_info "Creating promise analysis summary..."
+    
+    {
+        echo "PROMISE Analysis Summary"
+        echo "========================"
+        echo ""
+    } > "$OUTPUT_PATH/$name/promise_summary.txt"
+    
+    for dir in "${p1_dirs[@]}"; do
+        if [ -n "${ECM_TEV:-}" ]; then
+            local energy_dir="${dir}_${ECM_TEV}TeV_double"
+            local log_file="$WORK_DIR/$energy_dir/promise_analysis_${energy_dir}.log"
+        else
+            local log_file="$WORK_DIR/${dir}_double/promise_analysis_${dir}_double.log"
+        fi
+        
+        if [ -f "$log_file" ]; then
+            cp "$log_file" "$OUTPUT_PATH/$name/"
+            
+            # Extract key stats from the log
+            local dir_name
+            if [ -n "${ECM_TEV:-}" ]; then
+                dir_name="${dir}_${ECM_TEV}TeV_double"
+            else
+                dir_name="${dir}_double"
+            fi
+            
+            echo "=== $dir_name ===" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            
+            # Extract compilation and execution stats
+            grep "compilations" "$log_file" | head -1 >> "$OUTPUT_PATH/$name/promise_summary.txt" 2>/dev/null || echo "compilations info not found" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            grep "executions" "$log_file" | head -1 >> "$OUTPUT_PATH/$name/promise_summary.txt" 2>/dev/null || echo "executions info not found" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            
+            # Extract timing
+            grep "took" "$log_file" | head -1 >> "$OUTPUT_PATH/$name/promise_summary.txt" 2>/dev/null || echo "timing info not found" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            
+            # Extract final result
+            grep "final result" "$log_file" | head -1 >> "$OUTPUT_PATH/$name/promise_summary.txt" 2>/dev/null || echo "final result info not found" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+            
+            echo "" >> "$OUTPUT_PATH/$name/promise_summary.txt"
+        fi
+    done
+    
+    if [ -f "$OUTPUT_PATH/$name/promise_summary.txt" ]; then
+        log_success "Promise analysis summary created"
+    fi
 
     log_success "Step 6 completed - all postprocessing of  analyses finished"
 }

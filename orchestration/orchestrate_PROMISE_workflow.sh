@@ -800,32 +800,26 @@ step6_copy_results() {
         local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
         
         for dir in "${p1_dirs[@]}"; do
-            local double_dir="${dir}_double"
-            if [ -d "$double_dir" ]; then
-                cd "$double_dir"
+            local energy_dir="${dir}_${tag}_double"
+            if [ -d "$energy_dir" ]; then
                 if python3 histogram_mul_sub.py \
-                   > "histogram_log.txt" 2>&1; then
+                   > "histogram_${energy_dir}_log.txt" 2>&1; then
                     log_success "Histogram postprocess of result completed"
                 else 
                     log_error "Histogram of results failed" 
                 fi
-                cd "$WORK_DIR"
             fi
-        done
+done
     else
-        cd "$WORK_DIR"
-        local p1_dirs=($(find . -maxdepth 1 -type d -name "P1_*" ! -name "*_float" ! -name "*TeV*" | sed 's|^\./||' | sort))
         for dir in "${p1_dirs[@]}"; do
             local double_dir="${dir}_double"
             if [ -d "$double_dir" ]; then
-                cd "$double_dir"
                 if python3 histogram_mul_sub.py \
-                   > "histogram_log.txt" 2>&1; then
+                   > "histogram_${double_dir}_log.txt" 2>&1; then
                     log_success "Histogram postprocess of result completed"
                 else 
                     log_error "Histogram of results failed" 
                 fi
-                cd "$WORK_DIR"
             fi
         done
     fi

@@ -78,9 +78,17 @@ fpternary(const bool& mask, const fptype& a, const fptype& b)
 {
     return (mask ? a : b);
 }
+
+template<typename FP>
+inline FP
+fpternary(const bool& mask, const FP& a, const FP& b)
+{
+    return (mask ? a : b);
+}
+
 #ifdef __CADNA__
 
-template <typename FP, typename FP2,
+template <typename FP, typename FP2=FP,
 std::enable_if_t<std::is_same_v<FP, double_st> || std::is_same_v<FP2, double_st>, int> = 0>
 auto
 fpternary(const bool& mask, const  FP& a, const  FP2& b)

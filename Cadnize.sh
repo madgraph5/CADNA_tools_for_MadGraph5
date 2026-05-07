@@ -193,11 +193,22 @@ done
 
 echo
 echo "          cadnize_std_replace.py"
-files=(../../src/mgOnGpuFptypes.h ../../src/HelAmps_sm.h ../CrossSectionKernels.cc fsampler.cc MadgraphTest.h testxxx.cc runTest.cc)
+files=(../../src/mgOnGpuFptypes.h ../../src/HelAmps_sm.h ../CrossSectionKernels.cc fsampler.cc MadgraphTest.h testxxx.cc runTest.cc CrossSectionKernels.cc)
 for file in "${files[@]}"
 do
     python3  $CURRENT_DIR/srcpy/cadnize_std_replace.py $file
 done
+
+# ---------------------- ALOHA OBJ -------------------------
+
+       sed -i  's/tIPF_value[i * nMF + j] = tFLV[i].value[j] ? *tFLV[i].value[j] : cxtype{}/s/tIPF_value[i * nMF + j] = tFLV[i].value[j] ;/\/\ ? *tFLV[i].value[j] : cxtype{}' CPPProcess.cc
+
+	sed -i 's/cxtype* value[max_flavor];/cxtype value[max_flavor];/' ../../src/Parameters_sm.h 
+
+	sed -i 's/&GC/GC'
+
+       
+# ---------------------- ALOHA OBJ -------------------------
 
                 #paste "\n" after every operator after every "=" in HelAmps_sm.h - make optional
 #python3 $CURRENT_DIR/srcpy/cadnize_expand_equations.py ../../src/HelAmps_sm.h

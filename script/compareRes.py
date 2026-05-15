@@ -8,6 +8,7 @@ import re
 from math import log10
 from pathlib import Path
 import matplotlib.pyplot as plt
+import numpy as np
 import os
 
 
@@ -57,40 +58,79 @@ def compare_values(val1, val2):
     return matching_digits
 
 
-def plotHis_MEP(file1, file2, matrixElementPrecision_fl, matrixElementPrecisionZeros):
-    """Plot histogram of matrix element precision"""
+def plotHis_MEP(file1, file2, matrixElementAccuracy_fl, matrixElementAccuracyZeros, dir_name="histograms"):
+    """Plot histogram of matrix element accuracy"""
+
+    if len(matrixElementAccuracy_fl) == 0:
+        print("No non-zero matrix element accuracies to plot.")
+        return
+
+    values = np.asarray(matrixElementAccuracy_fl, dtype=float)
+
+    below_3 = np.sum(values < 3)
+    frac = below_3 / len(values)
+
+    mean_val = np.mean(values)
+    median_val = np.median(values)
+
     fig, ax = plt.subplots()
-    plt.title(f"Matrix element precision: {Path(file1).name} vs {Path(file2).name}")
-    plt.xlabel(f"Digits of precision.        Sum = {len(matrixElementPrecision_fl) + matrixElementPrecisionZeros}")
 
-    # Create histogram
-    counts, edges, bars = ax.hist(matrixElementPrecision_fl, histtype='barstacked',
-                                  bins=range(0, int(max(matrixElementPrecision_fl)) + 2))
-    plt.bar_label(bars)
+    ax.set_title(f"Matrix element accuracy: {Path(file1).name} vs {Path(file2).name}")
+    ax.set_xlabel(f"Digits of accuracy. [1]     Sum = {len(matrixElementAccuracy_fl)}")
+    ax.set_ylabel("ME count [1]")
 
-    # Show the mean
-    mean_val = sum(matrixElementPrecision_fl) / len(matrixElementPrecision_fl)
-    plt.axvline(x=mean_val, color='c', linestyle='dashed', linewidth=1)
-    min_ylim, max_ylim = plt.ylim()
-    plt.text(mean_val, max_ylim * 0.1, f'Mean: {mean_val:.2f}', color='black')
+    ax.text(
+        0.98, 0.98,
+        f"Below 3 sig. dig. = {frac*100:.2f}%",
+        transform=ax.transAxes,
+        ha='right',
+        va='top'
+    )
 
-    # Create directory for histograms if it doesn't exist
-    dir_name = "histograms"
+    counts, edges, bars = ax.hist(
+        values,
+        histtype='barstacked',
+        bins=range(0, int(max(values)) + 2)
+    )
+    ax.bar_label(bars)
+
+    ax.axvline(x=mean_val, color='c', linestyle='dashed', linewidth=1)
+    ax.axvline(x=median_val, color='orange', linestyle='dashed', linewidth=1)
+
+    min_ylim, max_ylim = ax.get_ylim()
+
+    ax.text(
+        mean_val,
+        max_ylim * 0.10,
+        f"Mean: {mean_val:.3f}",
+        color='black'
+    )
+
+    ax.text(
+        median_val,
+        max_ylim * 0.22,
+        f"Median: {median_val:.3f}",
+        color='black'
+    )
+
     if not os.path.exists(dir_name):
         os.makedirs(dir_name)
 
-    # Save histogram
-    output_name = f"comparisonME.png"
-    plt.savefig(output_name)
+    output_name = f"{dir_name}/comparisonME.pdf"
+    plt.savefig(output_name, dpi=200)
     print(f"\nHistogram saved as: {output_name}")
     plt.show()
     plt.close()
 
-
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) < 3:
         print("Usage: python compare_matrix_elements.py <file1.txt> <file2.txt>")
         sys.exit(1)
+
+    dir_name = "histograms"
+    if len(sys.argv) == 4:
+        dir_name = sys.argv[3]
+
 
     file1, file2 = sys.argv[1], sys.argv[2]
 
@@ -145,7 +185,7 @@ def main():
 
     # Create histogram plot
     if matching_digits_list:
-        plotHis_MEP(file1, file2, matching_digits_list, exact_matches)
+        plotHis_MEP(file1, file2, matching_digits_list, exact_matches, dir_name)
 
 
 if __name__ == "__main__":

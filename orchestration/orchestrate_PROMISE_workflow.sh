@@ -40,7 +40,7 @@ ITERATIONS=10000000
  ECM_TEV=14
 
 # Enable mail on successful completition
-MAIL_ON_SUCCESS="true"
+MAIL_ON_SUCCESS="false"
 USER="${USER}" #if not same as lxplus username, change accordingly
 
 # CADNA toolbox path (set this to your actual path or pass as environment variable)
@@ -1077,21 +1077,21 @@ main() {
         exit 1
     fi
     
-    if  ! ssh $USER@lxplus.cern.ch 'echo "TRY OUT"' > /dev/null 2>&1  && [ $MAIL_ON_SUCCESS == "true" ]; then
-        log_error "Can't access lxplus. Possibly expired kerberos certificate"
-        log_info  "Run - kinit -f $USER@CERN.CH or set MAIL_ON_SUCCESS variable"
-        exit 1
-    fi
+#    if  ! ssh $USER@lxplus.cern.ch 'echo "TRY OUT"' > /dev/null 2>&1  && [ $MAIL_ON_SUCCESS == "true" ]; then
+#        log_error "Can't access lxplus. Possibly expired kerberos certificate"
+#        log_info  "Run - kinit -f $USER@CERN.CH or set MAIL_ON_SUCCESS variable"
+#        exit 1
+#    fi
 
     if grep "override FPTYPE" ../Source/make_opts > /dev/null ; then
 	    log_warn "Removing override FPTYPE from make_opts"
 	    sed '1{/^override FPTYPE/d;}' ../Source/make_opts > make_opts.tmp && mv make_opts.tmp ../Source/make_opts
     fi
     
-    if ! promise > /dev/null 2>&1; then
-	    log_error "PROMISE was not sourced please source"
-	    exit 1
-    fi
+#    if ! promise > /dev/null 2>&1; then
+#	    log_error "PROMISE was not sourced please source"
+#	    exit 1
+#    fi
     # Verify P1_* directories exist in work directory
     log_info "Checking for P1_* directories in work directory..."
     cd "$WORK_DIR"
@@ -1126,7 +1126,7 @@ main() {
     step2_compile_all
     step3_run_all_checks
     step4_compare_all
-    step5_promise_analysis
+#    step5_promise_analysis
     step6_copy_results
     
     # Calculate duration
